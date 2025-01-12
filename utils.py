@@ -4,6 +4,7 @@ import json
 import base64
 import asyncio
 import mimetypes
+from datetime import datetime
 from typing import Union, Literal, Optional
 from urllib.parse import urlparse
 from collections import deque
@@ -343,3 +344,23 @@ class CQCode:
             )
         else:
             raise ValueError(f"Invalid face_id: {id}, skipping...")
+
+
+class Tools:
+
+    @staticmethod
+    def get_id_in_parentheses(s: str) -> str:
+        seq = []
+        start = False
+        for i in reversed(s):
+            if i == ')':
+                start = True
+            elif i == '(':
+                return "".join(reversed(seq))
+            elif start:
+                seq.append(i)
+        return ""
+
+    @staticmethod
+    def timestamp() -> str:
+        return "{:.3f}".format(datetime.now().timestamp()).replace(".", "")

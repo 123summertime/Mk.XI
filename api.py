@@ -7,7 +7,7 @@ import aiofiles
 import uuid
 import httpx
 from model import Config
-from typing import Type
+from typing import Type, Optional
 
 
 class API(ABC):
@@ -224,7 +224,7 @@ class StrangerInfo(API):
         return {
             "user_id": user_id,
             "nickname": ret["username"],
-            "sex": 'unknown',   # helicopter(bushi)
+            "sex": "unknown",   # helicopter(bushi)
             "age": -1,
             "avatar": ret["avatar"],
         }
@@ -246,26 +246,9 @@ class FriendList(API):
         } for i in ret["friends"]]
 
 
-class GroupList(API):
-
-    async def __call__(self, *args, **kwargs):
-        res = await self._fetch(
-            "GET",
-            self._build_url('v1/user/profile/me'),
-            headers={"Authorization": self._config.token}
-        )
-        ret = self._response_handler(res)
-        return [{
-            "group_id": i["group"],
-            "group_name": "",
-            "member_count": -1,
-            "max_member_count": -1,
-        } for i in ret["groups"]]
-
-
 class GroupInfo(API):
 
-    def __call__(self, *args, **kwargs):
+    async def __call__(self, *args, **kwargs):
         group_id = kwargs["group_id"]
         res0 = await self._fetch(
             "GET",
@@ -284,6 +267,23 @@ class GroupInfo(API):
             "member_count": len(ret1["members"]),
             "max_member_count": 2000,
         }
+
+
+class GroupList(API):
+
+    async def __call__(self, *args, **kwargs):
+        res = await self._fetch(
+            "GET",
+            self._build_url('v1/user/profile/me'),
+            headers={"Authorization": self._config.token}
+        )
+        ret = self._response_handler(res)
+        return [{
+            "group_id": i["group"],
+            "group_name": "",
+            "member_count": -1,
+            "max_member_count": -1,
+        } for i in ret["groups"]]
 
 
 class GroupMemberInfo(API):
@@ -310,7 +310,7 @@ class APIWithFileIO(API):
     _save_path = './downloads'
 
 
-class GetRecord(APIWithFileIO):
+class Record(APIWithFileIO):
 
     async def __call__(self, *args, **kwargs):
         file = kwargs["file"]  # download url
@@ -332,7 +332,7 @@ class GetRecord(APIWithFileIO):
         return {"file": file_path}
 
 
-class GetImage(APIWithFileIO):
+class Image(APIWithFileIO):
 
     async def __call__(self, *args, **kwargs):
         file = kwargs["file"]  # base64
@@ -353,7 +353,7 @@ class GetImage(APIWithFileIO):
         return {"file": file_path}
 
 
-class GetStatus(API):
+class Status(API):
     ...
 
 
@@ -386,6 +386,6 @@ class FetchAPI:
             raise ValueError("Not instantiated yet")
         return cls._instance
 
-    async def call(self, cls: Type[API], **kwargs):
+    async def call(self, cls: Type[API], **kwargs) -> Optional[dict]:
         return await cls(self._config)(**kwargs)
 

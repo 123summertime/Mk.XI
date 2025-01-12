@@ -8,7 +8,7 @@ from ws import MkIXConnect, OneBotConnect
 from model import Config, MyProfile, MkIXGetMessage, OB11ActionData
 from event import event_mapping
 from action import action_mapping
-from utils import MkIXMessageMemo
+from utils import MkIXMessageMemo, Tools
 
 
 class MkXI:
@@ -32,16 +32,16 @@ class MkXI:
         res = await self._fetcher.call(Login)
         self._config.token = f"Bearer {res['access_token']}"
         res = await self._fetcher.call(WSToken)
-        wsToken = res['token']
+        ws_token = res['token']
         res = await self._fetcher.call(GetMyProfile)
         res["groups"] = {i["group"] for i in res["groups"]}
         res["friends"] = {i["uuid"] for i in res["friends"]}
         self._my_profile = MyProfile.model_validate(res)
 
-        self._MkIXConnect = MkIXConnect(self._config, self._mkix_message_handler, wsToken)
+        self._MkIXConnect = MkIXConnect(self._config, self._mkix_message_handler, ws_token)
         self._OneBotConnect = OneBotConnect(self._config, self._onebot_message_handler)
         self._memo = MkIXMessageMemo(self._config, self._MkIXConnect).get_instance()
-        self._launch_time = ("{:.3f}".format(datetime.now().timestamp())).replace(".", "")
+        self._launch_time = Tools.timestamp()
         print("Set up success")
 
     async def _mkix_message_handler(self, message):
@@ -61,11 +61,11 @@ class MkXI:
                     'echo': message["echo"],
                 }))
             elif isinstance(operation, dict):
-                await self._fetcher.call(**operation)
+                ret = await self._fetcher.call(**operation)
                 asyncio.create_task(self._OneBotConnect.send({
                     'status': 'ok',
                     'retcode': 0,
-                    'data': None,
+                    'data': ret,
                     'echo': message["echo"],
                 }))
         except Exception as e:

@@ -3,10 +3,11 @@ from model import OB11ActionData, MkIXPostMessage, CQDataListItem, CQData, MkIXM
 from utils import CQCode
 from typing import Union, Literal, Optional
 from utils import MkIXMessageMemo
-from api import GroupKick, GroupBan
+# from api import GroupKick, GroupBan, GroupAdmin, GroupName
+from api import *
 
 
-class MessageAction:
+class WSAction:
 
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
@@ -26,7 +27,7 @@ class MessageAction:
         pass
 
 
-class SendPrivateMsg(MessageAction):
+class SendPrivateMsg(WSAction):
     _user_id: str
     _message: Union[str, list]
     _auto_escape = False
@@ -37,7 +38,7 @@ class SendPrivateMsg(MessageAction):
             i.groupType = "friend"
 
 
-class SendGroupMsg(MessageAction):
+class SendGroupMsg(WSAction):
     _group_id: str
     _message: Union[str, list]
     _auto_escape = False
@@ -48,7 +49,7 @@ class SendGroupMsg(MessageAction):
             i.groupType = "group"
 
 
-class SendMsg(MessageAction):
+class SendMsg(WSAction):
     _message_type: Optional[Literal["group", "private"]] = None
     _user_id: Optional[str] = None
     _group_id: Optional[str] = None
@@ -74,7 +75,7 @@ class SendMsg(MessageAction):
             i.group = group_id
 
 
-class Action(ABC):
+class HTTPAction(ABC):
 
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
@@ -85,7 +86,7 @@ class Action(ABC):
         raise NotImplementedError
 
 
-class DeleteMsg(Action):
+class DeleteMsg(HTTPAction):
     _message_id: str
 
     def __call__(self) -> list[MkIXPostMessage]:
@@ -105,7 +106,7 @@ class DeleteMsg(Action):
         return model_list
 
 
-class SetGroupKick(Action):
+class SetGroupKick(HTTPAction):
     _group_id: str
     _user_id: str
 
@@ -117,7 +118,7 @@ class SetGroupKick(Action):
         }
 
 
-class SetGroupBan(Action):
+class SetGroupBan(HTTPAction):
     _group_id: str
     _user_id: str
     _duration: int
@@ -131,6 +132,159 @@ class SetGroupBan(Action):
         }
 
 
+class SetGroupAdmin(HTTPAction):
+    _group_id: str
+    _user_id: str
+    _enable = True
+
+    def __call__(self):
+        return {
+            "cls": GroupAdmin,
+            "group_id": self._group_id,
+            "user_id": self._user_id,
+            "enable": self._enable,
+        }
+
+
+class SetGroupName(HTTPAction):
+    _group_id: str
+    _group_name: str
+
+    def __call__(self):
+        return {
+            "cls": GroupName,
+            "group_id": self._group_id,
+            "group_name": self._group_name,
+        }
+
+
+class SetGroupLeave(HTTPAction):
+    _group_id: str
+    _is_dismiss = False
+
+    def __call__(self):
+        return {
+            "cls": GroupLeave,
+            "group_id": self._group_id,
+            "is_dismiss": self._is_dismiss,
+        }
+
+
+class SetFriendAddRequest(HTTPAction):
+    _user_id: str   # incompatible
+    _flag: str
+    _approve = True
+    _remark: str
+
+    def __call__(self):
+        return {
+            "cls": FriendAddRequest,
+            "user_id": self._user_id,
+            "flag": self._flag,
+            "approve": self._approve,
+        }
+
+
+class SetGroupAddRequest(HTTPAction):
+    _group_id: str  # incompatible
+    _flag: str
+    _sub_type: str
+    _type: str
+    _approve = True
+    _reason: str
+
+    def __call__(self):
+        return {
+            "cls": GroupAddRequest,
+            "flag": self._flag,
+            "approve": self._approve,
+        }
+
+
+class GetLoginInfo(HTTPAction):
+
+    def __call__(self):
+        return {
+            "cls": LoginInfo,
+        }
+
+
+class GetStrangerInfo(HTTPAction):
+    _user_id: str
+
+    def __call__(self):
+        return {
+            "cls": StrangerInfo,
+            "user_id": self._user_id,
+        }
+
+
+class GetFriendList(HTTPAction):
+
+    def __call__(self):
+        return {
+            "cls": FriendList,
+        }
+
+
+class GetGroupInfo(HTTPAction):
+    _group_id: str
+
+    def __call__(self):
+        return {
+            "cls": GroupInfo,
+            "group_id": self._group_id,
+        }
+
+
+class GetGroupList(HTTPAction):
+
+    def __call__(self):
+        return {
+            "cls": GroupList,
+        }
+
+
+class GetGroupMemberList(HTTPAction):
+    _group_id: str
+
+    def __call__(self):
+        return {
+            "cls": GroupMemberList,
+            "group_id": self._group_id,
+        }
+
+
+class GetRecord(HTTPAction):
+    _file: str
+    _out_format: str
+
+    def __call__(self):
+        return {
+            "cls": Record,
+            "file": self._file,
+        }
+
+
+class GetImage(HTTPAction):
+    _file: str
+    _out_format: str
+
+    def __call__(self):
+        return {
+            "cls": Image,
+            "file": self._file,
+        }
+
+
+class GetVersionInfo(HTTPAction):
+
+    def __call__(self):
+        return {
+            "cls": VersionInfo,
+        }
+
+
 def action_mapping(data: OB11ActionData) -> Union[list[MkIXPostMessage], dict]:
     print('Receive OB11 message')
     action = data.action
@@ -141,6 +295,20 @@ def action_mapping(data: OB11ActionData) -> Union[list[MkIXPostMessage], dict]:
         "delete_msg": DeleteMsg,
         "set_group_kick": SetGroupKick,
         "set_group_ban": SetGroupBan,
+        "set_group_admin": SetGroupAdmin,
+        "set_group_name": SetGroupName,
+        "set_group_leave": SetGroupLeave,
+        "set_friend_add_request": SetFriendAddRequest,
+        "set_group_add_request": SetGroupAddRequest,
+        "get_login_info": GetLoginInfo,
+        "get_stranger_info": GetStrangerInfo,
+        "get_friend_list": GetFriendList,
+        "get_group_info": GetGroupInfo,
+        "get_group_list": GetGroupList,
+        "get_group_member_list": GetGroupMemberList,
+        "get_record": GetRecord,
+        "get_image": GetImage,
+        "get_version_info": GetVersionInfo,
     }
     if action not in actions:
         raise ValueError("Unsupported Action")

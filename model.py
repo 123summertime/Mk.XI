@@ -11,6 +11,7 @@ class Config(BaseModel):
     OneBot_url: str
     token: str = ""
     max_memo_size: int
+    ssl_check: bool
 
     @validator("account", pre=True)
     def _convert_account(cls, v):
