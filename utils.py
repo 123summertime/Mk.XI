@@ -153,23 +153,54 @@ class CQCode:
     def serialization(cls,
                       message: MkIXGetMessage,
                       config: Optional[Config] = None,
-                      group_type: Optional[Literal["group", "private"]] = None) -> CQDataListItem:
-        convert = ""
-        for at in message.payload.meta.get("at", []):
-            convert += f"[CQ:at,qq={at}]"
-        if message.type == "text":
-            convert += message.payload.content
-        elif message.type == "image":
-            convert += f"[CQ:image,file={message.payload.content}]"
-        elif message.type in ("file", "audio"):
-            if not config:
-                raise ValueError("Parameter 'config' must be provide")
-            if not group_type:
-                raise ValueError("Parameter 'group_type' must be provide")
-            group_type = 'group' if group_type == 'group' else 'user'
-            url = f"http://{config.server_url}/v1/{group_type}/{message.group}/download/{message.payload.content}"
-            convert += f"[CQ:{message.type},file={url}]"
-        return convert
+                      format_type: Literal["string", "array"] = "array",
+                      group_type: Optional[Literal["group", "private"]] = None) -> Union[str, list]:
+
+        if format_type == "string":
+            convert = ""
+            for at in message.payload.meta.get("at", []):
+                convert += f"[CQ:at,qq={at}]"
+            if message.type == "text":
+                convert += message.payload.content
+            elif message.type == "image":
+                convert += f"[CQ:image,file={message.payload.content}]"
+            elif message.type in ("file", "audio"):
+                if not config or not group_type:
+                    raise ValueError("Parameters 'config' and 'group_type' must be provided for file/audio types")
+                group_type = 'group' if group_type == 'group' else 'user'
+                url = f"http://{config.server_url}/v1/{group_type}/{message.group}/download/{message.payload.content}"
+                convert += f"[CQ:{message.type},file={url}]"
+            return convert
+
+        if format_type == "array":
+            convert = []
+            for at in message.payload.meta.get("at", []):
+                convert.append({
+                    "type": "at",
+                    "data": {"qq": at},
+                })
+            if message.type == "text":
+                convert.append({
+                    "type": "text",
+                    "data": {"text": message.payload.content},
+                })
+            elif message.type == "image":
+                convert.append({
+                    "type": "image",
+                    "data": {"file": message.payload.content},
+                })
+            elif message.type in ("file", "audio"):
+                if not config or not group_type:
+                    raise ValueError("Parameters 'config' and 'group_type' must be provided for file/audio types")
+                group_type = 'group' if group_type == 'group' else 'user'
+                url = f"http://{config.server_url}/v1/{group_type}/{message.group}/download/{message.payload.content}"
+                convert.append({
+                    "type": message.type,
+                    "data": {"file": url},
+                })
+            return convert
+
+        raise ValueError("Invalid parameter: format_type")
 
     @classmethod
     def deserialization(cls, message: Union[CQData, list[CQDataListItem]]) -> list[MkIXPostMessage]:
@@ -347,19 +378,6 @@ class CQCode:
 
 
 class Tools:
-
-    @staticmethod
-    def get_id_in_parentheses(s: str) -> str:
-        seq = []
-        start = False
-        for i in reversed(s):
-            if i == ')':
-                start = True
-            elif i == '(':
-                return "".join(reversed(seq))
-            elif start:
-                seq.append(i)
-        return ""
 
     @staticmethod
     def timestamp() -> str:

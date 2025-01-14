@@ -121,14 +121,14 @@ class SetGroupKick(HTTPAction):
 class SetGroupBan(HTTPAction):
     _group_id: str
     _user_id: str
-    _duration: int
+    _duration: int = 30 * 60
 
     def __call__(self) -> dict:
         return {
             "cls": GroupBan,
             "group_id": self._group_id,
             "user_id": self._user_id,
-            "duration": self._duration,
+            "duration": self._duration // 60,   # 单位: s
         }
 
 
@@ -196,6 +196,7 @@ class SetGroupAddRequest(HTTPAction):
     def __call__(self):
         return {
             "cls": GroupAddRequest,
+            "group_id": self._group_id,
             "flag": self._flag,
             "approve": self._approve,
         }
@@ -277,6 +278,14 @@ class GetImage(HTTPAction):
         }
 
 
+class GetStatus(HTTPAction):
+
+    def __call__(self):
+        return {
+            "cls": Status,
+        }
+
+
 class GetVersionInfo(HTTPAction):
 
     def __call__(self):
@@ -308,6 +317,7 @@ def action_mapping(data: OB11ActionData) -> Union[list[MkIXPostMessage], dict]:
         "get_group_member_list": GetGroupMemberList,
         "get_record": GetRecord,
         "get_image": GetImage,
+        "get_status": GetStatus,
         "get_version_info": GetVersionInfo,
     }
     if action not in actions:

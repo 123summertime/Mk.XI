@@ -9,9 +9,11 @@ class Config(BaseModel):
     password: str
     server_url: str
     OneBot_url: str
-    token: str = ""
     max_memo_size: int
     ssl_check: bool
+
+    token: str = ""
+    ws_check: Any = None
 
     @validator("account", pre=True)
     def _convert_account(cls, v):
@@ -84,7 +86,6 @@ class MkIXPostMessage(BaseModel):
         if not isinstance(other, MkIXPostMessage):
             return NotImplemented
 
-        payload = None
         if self.payload and other.payload:
             payload = self.payload | other.payload
         else:

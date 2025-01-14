@@ -1,13 +1,11 @@
 import yaml
 import traceback
-from datetime import datetime
-import asyncio
 
 from api import *
 from ws import MkIXConnect, OneBotConnect
 from model import Config, MyProfile, MkIXGetMessage, OB11ActionData
 from event import event_mapping
-from action import action_mapping
+from action import action_mapping, FriendAddRequest, GroupAddRequest
 from utils import MkIXMessageMemo, Tools
 
 
@@ -42,17 +40,18 @@ class MkXI:
         self._OneBotConnect = OneBotConnect(self._config, self._onebot_message_handler)
         self._memo = MkIXMessageMemo(self._config, self._MkIXConnect).get_instance()
         self._launch_time = Tools.timestamp()
+        self._config.ws_check = self._MkIXConnect.can_send
         print("Set up success")
 
     async def _mkix_message_handler(self, message):
-        event = event_mapping(message, self._launch_time, self._config, self._my_profile)
+        event = await event_mapping(message, self._launch_time, self._config, self._my_profile)
         if event:
             asyncio.create_task(self._OneBotConnect.send(event))
 
     async def _onebot_message_handler(self, message: dict):
         try:
             operation = action_mapping(OB11ActionData.model_validate(message))
-            if isinstance(operation, list):
+            if isinstance(operation, list):     # 该Action通过ws发送
                 message_id = await self._memo.post_messages(operation)
                 asyncio.create_task(self._OneBotConnect.send({
                     'status': 'ok',
@@ -60,8 +59,12 @@ class MkXI:
                     'data': {'message_id': message_id},
                     'echo': message["echo"],
                 }))
-            elif isinstance(operation, dict):
+            elif isinstance(operation, dict):   # 该Action通过http发送
                 ret = await self._fetcher.call(**operation)
+                if operation["cls"] == FriendAddRequest and operation["approve"]:
+                    self._my_profile.friends.add(operation["user_id"])
+                elif operation["cls"] == GroupAddRequest and operation["approve"]:
+                    self._my_profile.groups.add(operation["group_id"])
                 asyncio.create_task(self._OneBotConnect.send({
                     'status': 'ok',
                     'retcode': 0,
@@ -70,6 +73,7 @@ class MkXI:
                 }))
         except Exception as e:
             print("Action error", e)
+            print(traceback.print_exc())
             asyncio.create_task(self._OneBotConnect.send({
                 'status': 'failed',
                 'retcode': 1400,

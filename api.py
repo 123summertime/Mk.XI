@@ -1,3 +1,4 @@
+import re
 import json
 from abc import ABC, abstractmethod
 import asyncio
@@ -264,7 +265,7 @@ class GroupInfo(API):
         return {
             "group_id": group_id,
             "group_name": ret0["name"],
-            "member_count": len(ret1["members"]),
+            "member_count": len(ret1["users"]),
             "max_member_count": 2000,
         }
 
@@ -314,7 +315,7 @@ class Record(APIWithFileIO):
 
     async def __call__(self, *args, **kwargs):
         file = kwargs["file"]  # download url
-        if not file.startswith(self._build_url("v1")):
+        if not file.startswith(self._build_url("v1")[:-1]):
             raise ValueError("Unknown domain")
 
         res = await self._fetch(
@@ -322,14 +323,17 @@ class Record(APIWithFileIO):
             file,
             headers={"Authorization": self._config.token},
         )
-        ret = self._response_handler(res)
+        if res.status_code >= 300:
+            content = json.loads(res.content.decode())
+            raise RuntimeError(f"HTTP {res.status_code} detail={content['detail']}")
 
         os.makedirs(self._save_path, exist_ok=True)
-        file_path = os.path.join(self._save_path, uuid.uuid4().hex)
+        file_path = os.path.join(self._save_path, file.split('/')[-1] + '.mp3')
+        absolute_path = os.path.abspath(file_path)
         async with aiofiles.open(file_path, "wb") as f:
-            await f.write(ret)
+            await f.write(res.content)
 
-        return {"file": file_path}
+        return {"file": absolute_path}
 
 
 class Image(APIWithFileIO):
@@ -340,21 +344,29 @@ class Image(APIWithFileIO):
             raise ValueError("Invalid base64. Must start with base64://")
 
         try:
-            data = base64.b64decode(file)
+            data = base64.b64decode(file.split(',')[1])
         except Exception as e:
             raise ValueError("Decode error")
 
+        match = re.search(r"data:image/(\w+);base64", file)
+        extract_type = match.group(1) if match else "png"
         os.makedirs(self._save_path, exist_ok=True)
-        file_path = os.path.join(self._save_path, uuid.uuid4().hex)
-
+        file_path = os.path.join(self._save_path, f"{uuid.uuid4().hex}.{extract_type}")
+        absolute_path = os.path.abspath(file_path)
         async with aiofiles.open(file_path, "wb") as f:
             await f.write(data)
 
-        return {"file": file_path}
+        return {"file": absolute_path}
 
 
 class Status(API):
-    ...
+
+    async def __call__(self, *args, **kwargs):
+        status = await self._config.ws_check()
+        return {
+            "online": status,
+            "good": status,
+        }
 
 
 class VersionInfo(API):
@@ -386,6 +398,5 @@ class FetchAPI:
             raise ValueError("Not instantiated yet")
         return cls._instance
 
-    async def call(self, cls: Type[API], **kwargs) -> Optional[dict]:
+    async def call(self, cls: API, **kwargs) -> Optional[dict]:
         return await cls(self._config)(**kwargs)
-
