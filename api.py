@@ -398,5 +398,5 @@ class FetchAPI:
             raise ValueError("Not instantiated yet")
         return cls._instance
 
-    async def call(self, cls: API, **kwargs) -> Optional[dict]:
+    async def call(self, cls: Type[API], **kwargs) -> Optional[dict]:
         return await cls(self._config)(**kwargs)

@@ -110,6 +110,7 @@ class MkIXSystemMessage(BaseModel):
     senderID: Optional[str] = None
     senderKey: Optional[str] = None
     payload: str
+    meta: Optional[dict] = dict()
 
 
 class OB11ActionData(BaseModel):

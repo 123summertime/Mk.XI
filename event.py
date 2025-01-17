@@ -12,7 +12,7 @@ class Event(ABC):
     _post_type: Literal["message", "notice", "request", "meta_event"]
     _message: Optional[Message]
 
-    def __init__(self, message: Message, config: Config, self_id: int):
+    def __init__(self, message: Message, config: Config, self_id: str):
         self._message = message
         self._config = config
         self._self_id = self_id
@@ -96,6 +96,61 @@ class GroupFileUpload(NoticeEvent):
         }
 
 
+class GroupAdmin(NoticeEvent):
+    _message: MkIXSystemMessage
+
+    async def __call__(self):
+        return {
+            "time": self._message.time,
+            "self_id": self._self_id,
+            "post_type": self._post_type,
+            "notice_type": "group_admin",
+            "sub_type": "set" if self._message.meta["operation"] == "group_admin_set" else "unset",
+            "group_id": self._message.meta["var"]["id"],
+            "user_id": self._self_id,
+        }
+
+
+class GroupDecrease(NoticeEvent):
+    _message: MkIXGetMessage
+
+    async def __call__(self):
+        op = self._message.payload.meta["operation"]
+        if op == "group_leave":
+            tp = "leave"
+        elif op == "group_kick":
+            tp = "kick_me" if self._message.payload.meta["var"]["id"] == self._self_id else "kick"
+        else:
+            raise ValueError(f"Unknown operation type: {op}")
+
+        return {
+            "time": self._message.time,
+            "self_id": self._self_id,
+            "post_type": self._post_type,
+            "notice_type": "group_decrease",
+            "sub_type": tp,
+            "group_id": self._message.group,
+            "operator_id": self._message.payload.meta["var"]["operator"],
+            "user_id": self._message.payload.meta["var"]["id"],
+        }
+
+
+class GroupIncrease(NoticeEvent):
+    _message: MkIXGetMessage
+
+    async def __call__(self):
+        return {
+            "time": self._message.time,
+            "self_id": self._self_id,
+            "post_type": self._post_type,
+            "notice_type": "group_increase",
+            "sub_type": "approve" if self._message.payload.meta["var"]["way"] == "request" else "invite",
+            "group_id": self._message.group,
+            "operator_id": self._message.payload.meta["var"]["operator"],
+            "user_id": self._message.payload.meta["var"]["id"],
+        }
+
+
 class GroupBan(NoticeEvent):
     _message: MkIXGetMessage
 
@@ -105,9 +160,9 @@ class GroupBan(NoticeEvent):
             "self_id": self._self_id,
             "post_type": self._post_type,
             "notice_type": "group_ban",
-            "sub_type": "lift_ban" if "解除" in self._message.payload.content[-6:] else "ban",
+            "sub_type": "ban" if self._message.payload.meta["operation"] == "group_ban" else "lift_ban",
             "group_id": self._message.group,
-            "operator_id": 0,  # not provide
+            "operator_id": self._message.payload.meta["var"]["operator"],
             "user_id": self._message.payload.meta["var"]["id"],
             "duration": self._message.payload.meta["var"]["duration"],
         }
@@ -122,7 +177,7 @@ class FriendAdd(NoticeEvent):
             "self_id": self._self_id,
             "post_type": self._post_type,
             "notice_type": "friend_add",
-            "user_id": 0,   # not provide
+            "user_id": self._message.meta["var"]["id"],
         }
 
 
@@ -136,7 +191,7 @@ class GroupRecall(NoticeEvent):
             "post_type": self._post_type,
             "notice_type": "group_recall",
             "group_id": self._message.group,
-            "user_id": 0,  # not provide
+            "user_id": self._message.payload.meta["var"]["sender"],
             "operator_id": self._message.senderID,
             "message_id": self._message.payload.meta["var"]["time"],
         }
@@ -236,35 +291,43 @@ async def event_mapping(message: dict,
         if model.type == "echo":
             memo.receive_echo(model)
             return None
-        if model.type == "notice" and model.payload.endswith("已通过你的好友申请"):
-            return FriendAdd
-        mapping = {
-            "join": GroupRequest,
-            "friend": FriendRequest,
-        }
-        return mapping.get(model.type, None)
+        if model.type == "notice":
+            op = model.meta["operation"]
+            if op in ("friend_request_accepted"):
+                return FriendAdd
+            if op in ("group_admin_set", "group_admin_unset"):
+                return GroupAdmin
+            return None
+        if model.type == "join":
+            return GroupRequest     # TODO: 初始化时获取一次
+        if model.type == "friend":
+            return FriendRequest
+        return None
 
     def handle_group_message(model: MkIXGetMessage):
         if model.type == "system":
-            content = model.payload.content
-            if '禁言' in content and (content.endswith('分钟') or content.endswith('禁言')):
+            op = model.payload.meta["operation"]
+            if op in ("group_joined"):
+                return GroupIncrease
+            if op in ("group_ban", "group_lift_ban"):
                 return GroupBan
+            if op in ("group_kick", "group_leave"):
+                return GroupDecrease
             return None
-        mapping = {
-            "file": GroupFileUpload,
-            "revoke": GroupRecall
-        }
-        if model.type in mapping:
-            return mapping[model.type]
+        if model.type == "file":
+            return GroupFileUpload
+        if model.type == "revoke":
+            return GroupRecall
         memo.receive_chat(model, "group")
         return GroupMessageEvent
 
     def handle_private_message(model: MkIXGetMessage):
-        private_event_map = {
-            "revoke": FriendRecall
-        }
-        if model.type in private_event_map:
-            return private_event_map[model.type]
+        if model.type == "system":
+            return None
+        if model.type == "file":
+            return GroupFileUpload
+        if model.type == "revoke":
+            return FriendRecall
         memo.receive_chat(model, "friend")
         return PrivateMessageEvent
 
@@ -278,4 +341,4 @@ async def event_mapping(message: dict,
         else:
             event = handle_private_message(model)
 
-    return (await event(model, config, int(profile.uuid))()) if event else None
+    return (await event(model, config, profile.uuid)()) if event else None
