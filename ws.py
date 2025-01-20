@@ -5,9 +5,9 @@ import json
 from abc import ABC, abstractmethod
 
 import websockets
-from websockets.client import ClientConnection
 
-from model import Config, MkIXGetMessage
+from model import Config
+from event import LifeCycle, HeartBeat
 
 
 class WSConnect(ABC):
@@ -24,9 +24,9 @@ class WSConnect(ABC):
     async def _connect(self):
         pass
 
-    @abstractmethod
     async def _on_message(self, message):
-        pass
+        message = json.loads(message)
+        asyncio.create_task(self._message_callback(message))
 
     async def _on_close(self, e):
         print("ws close", e)
@@ -61,7 +61,7 @@ class MkIXConnect(WSConnect):
         super().__init__(config, message_callback)
 
     async def _connect(self):
-        url = f"ws://{self._config.server_url}/websocket/connect"
+        url = f"{self._config.server_url.replace('http', 'ws')}/websocket/connect"
         headers = {"Authorization": self._ws_token}
 
         try:
@@ -75,10 +75,6 @@ class MkIXConnect(WSConnect):
         except Exception as e:
             await self._on_error(e)
 
-    async def _on_message(self, message):
-        message = json.loads(message)
-        await self._message_callback(message)
-
 
 class OneBotConnect(WSConnect):
 
@@ -88,6 +84,8 @@ class OneBotConnect(WSConnect):
 
         async with websockets.connect(url, additional_headers=headers) as websocket:
             self._ws = websocket
+            asyncio.create_task(self._lifecycle())
+            asyncio.create_task(self._heartbeat())
             try:
                 async for message in self._ws:
                     self.attempt = 0
@@ -97,7 +95,12 @@ class OneBotConnect(WSConnect):
             except Exception as e:
                 await self._on_error(e)
 
-    async def _on_message(self, message):
-        message = json.loads(message)
-        await self._message_callback(message)
+    async def _lifecycle(self):
+        content = await LifeCycle(self._config.account)()
+        asyncio.create_task(self.send(content))
 
+    async def _heartbeat(self):
+        while True:
+            await asyncio.sleep(30)
+            content = await HeartBeat(self._config.account)()
+            asyncio.create_task(self.send(content))

@@ -1,14 +1,17 @@
 import re
 import json
-from abc import ABC, abstractmethod
-import asyncio
 import base64
 import os
 import aiofiles
+import asyncio
 import uuid
 import httpx
-from model import Config
+from abc import ABC, abstractmethod
 from typing import Type, Optional
+
+from model import Config
+
+DEVICE = "00000000"
 
 
 class API(ABC):
@@ -18,7 +21,7 @@ class API(ABC):
 
     def _build_url(self, endpoint: str, **params):
         query = '&'.join(f"{k}={v}" for k, v in params.items())
-        return f"http://{self._config.server_url}/{endpoint}?{query}"
+        return f"{self._config.server_url}/{endpoint}?{query}"
 
     def _response_handler(self, res: httpx.Response) -> dict:
         content = json.loads(res.content.decode())
@@ -76,7 +79,7 @@ class WSToken(API):
     async def __call__(self, *args, **kwargs):
         res = await self._fetch(
             "GET",
-            self._build_url('v1/user/wsToken', device="00000000"),
+            self._build_url('v1/user/wsToken', device=DEVICE),
             headers={"Authorization": self._config.token}
         )
         return self._response_handler(res)
@@ -307,6 +310,37 @@ class GroupMemberList(API):
         } for i in ret["members"]]
 
 
+class Status(API):
+
+    async def __call__(self, *args, **kwargs):
+        status = await self._config.ws_check()
+        return {
+            "online": status,
+            "good": status,
+        }
+
+
+class GetFriendRequest(API):
+
+    async def __call__(self, *args, **kwargs):
+        asyncio.create_task(self._fetch(
+            "GET",
+            self._build_url(f'v1/user/{self._config.account}/verify/request', device=DEVICE),
+            headers={"Authorization": self._config.token}
+        ))
+
+
+class GetGroupRequest(API):
+
+    async def __call__(self, *args, **kwargs):
+        group = kwargs["group"]
+        asyncio.create_task(self._fetch(
+            "GET",
+            self._build_url(f'v1/group/{group}/verify/request', device=DEVICE),
+            headers={"Authorization": self._config.token}
+        ))
+
+
 class APIWithFileIO(API):
     _save_path = './downloads'
 
@@ -357,16 +391,6 @@ class Image(APIWithFileIO):
             await f.write(data)
 
         return {"file": absolute_path}
-
-
-class Status(API):
-
-    async def __call__(self, *args, **kwargs):
-        status = await self._config.ws_check()
-        return {
-            "online": status,
-            "good": status,
-        }
 
 
 class VersionInfo(API):

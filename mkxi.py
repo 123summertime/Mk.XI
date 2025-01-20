@@ -3,7 +3,7 @@ import traceback
 
 from api import *
 from ws import MkIXConnect, OneBotConnect
-from model import Config, MyProfile, MkIXGetMessage, OB11ActionData
+from model import Config, MyProfile, OB11ActionData
 from event import event_mapping
 from action import action_mapping, FriendAddRequest, GroupAddRequest
 from utils import MkIXMessageMemo, Tools
@@ -21,6 +21,7 @@ class MkXI:
         try:
             with open('config.yaml', 'r', encoding='utf-8') as F:
                 config = yaml.safe_load(F)
+                config["encrypt"] = {str(k): v for k, v in config["encrypt"].items()}
                 self._config = Config.model_validate(config)
         except Exception as e:
             print("Error when loading config", e)
@@ -41,7 +42,12 @@ class MkXI:
         self._memo = MkIXMessageMemo(self._config, self._MkIXConnect).get_instance()
         self._launch_time = Tools.timestamp()
         self._config.ws_check = self._MkIXConnect.can_send
+
         print("Set up success")
+
+        # asyncio.create_task(self._fetcher.call(GetFriendRequest))
+        # for i in self._my_profile.groups:
+        #     asyncio.create_task(self._fetcher.call(GetGroupRequest, group=i))
 
     async def _mkix_message_handler(self, message):
         event = await event_mapping(message, self._launch_time, self._config, self._my_profile)

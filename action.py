@@ -1,9 +1,7 @@
-from abc import ABC, abstractmethod
 from model import OB11ActionData, MkIXPostMessage, CQDataListItem, CQData, MkIXMessagePayload
 from utils import CQCode
-from typing import Union, Literal, Optional
+from typing import Union, Literal
 from utils import MkIXMessageMemo
-# from api import GroupKick, GroupBan, GroupAdmin, GroupName
 from api import *
 
 

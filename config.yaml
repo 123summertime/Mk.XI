@@ -1,6 +1,9 @@
 account: 3213344200
 password: 123456
-server_url: 127.0.0.1:8000
+server_url: http://127.0.0.1:8000
 OneBot_url: ws://127.0.0.1:8080/onebot/v11/ws
-max_memo_size: 256
+max_memo_size: 1024
 ssl_check: false
+encrypt:
+  3372213701: 76reVcVgo29xhFxZpkguf0W2hzienEAG
+  1662546135: ll6oK0zZHuqmbj0a2fOdodFewUXim8Ql

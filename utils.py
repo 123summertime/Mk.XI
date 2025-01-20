@@ -5,15 +5,20 @@ import base64
 import asyncio
 import mimetypes
 from datetime import datetime
-from typing import Union, Literal, Optional
+from typing import Union, Literal, Optional, TYPE_CHECKING
 from urllib.parse import urlparse
 from collections import deque
 from api import PostFile, FetchAPI
 
 import httpx
+from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
+from Crypto.Util.Padding import pad
 
-from ws import MkIXConnect
 from model import MkIXGetMessage, CQData, CQDataListItem, MkIXMessagePayload, MkIXPostMessage, Config, MkIXSystemMessage
+
+if TYPE_CHECKING:
+    from ws import MkIXConnect
 
 
 class MkIXMessageMemo:
@@ -25,7 +30,7 @@ class MkIXMessageMemo:
             cls._instance = super(MkIXMessageMemo, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self, config: Config, ws: MkIXConnect):
+    def __init__(self, config: Config, ws: 'MkIXConnect'):
         if not hasattr(self, "_initialized"):
             self._initialized = True
             self._config = config
@@ -112,7 +117,9 @@ class MkIXMessageMemo:
                 except Exception as e:
                     print("Error:", e)
             else:
-                asyncio.create_task(self._ws.send(json.dumps(i.model_dump())))
+                if i.group in self._config.encrypt:
+                    Tools.encrypt(self._config, i)
+                asyncio.create_task(self._ws.send(i.model_dump()))
                 res = await self._wait_for_echo(i.echo)
 
             if res:
@@ -132,7 +139,6 @@ class MkIXMessageMemo:
             raise Exception("All failed")
         elif success_count < len(messages):
             future.set_result(message_ids[0])
-            # raise Exception(f"Only success {success_count} out of {len(messages)}")
         else:
             future.set_result(message_ids[0])
 
@@ -168,7 +174,7 @@ class CQCode:
                 if not config or not group_type:
                     raise ValueError("Parameters 'config' and 'group_type' must be provided for file/audio types")
                 group_type = 'group' if group_type == 'group' else 'user'
-                url = f"http://{config.server_url}/v1/{group_type}/{message.group}/download/{message.payload.content}"
+                url = f"{config.server_url}/v1/{group_type}/{message.group}/download/{message.payload.content}"
                 convert += f"[CQ:{message.type},file={url}]"
             return convert
 
@@ -193,7 +199,7 @@ class CQCode:
                 if not config or not group_type:
                     raise ValueError("Parameters 'config' and 'group_type' must be provided for file/audio types")
                 group_type = 'group' if group_type == 'group' else 'user'
-                url = f"http://{config.server_url}/v1/{group_type}/{message.group}/download/{message.payload.content}"
+                url = f"{config.server_url}/v1/{group_type}/{message.group}/download/{message.payload.content}"
                 convert.append({
                     "type": message.type,
                     "data": {"file": url},
@@ -382,3 +388,16 @@ class Tools:
     @staticmethod
     def timestamp() -> str:
         return "{:.3f}".format(datetime.now().timestamp()).replace(".", "")
+
+    @staticmethod
+    def encrypt(config: Config, msg: MkIXPostMessage) -> None:
+        s = msg.payload.content.encode('utf-8')
+        key = config.encrypt[msg.group].encode('utf-8')
+        iv = get_random_bytes(16)
+        cipher = AES.new(key, AES.MODE_CBC, iv)
+        encrypted = cipher.encrypt(pad(s, 16))
+        encrypted = base64.b64encode(encrypted).decode('utf-8')
+
+        msg.payload.content = encrypted
+        msg.payload.meta["encrypt"] = True
+        msg.payload.meta["iv"] = iv.hex()

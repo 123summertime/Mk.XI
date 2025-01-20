@@ -11,6 +11,7 @@ class Config(BaseModel):
     OneBot_url: str
     max_memo_size: int
     ssl_check: bool
+    encrypt: dict[str, str]
 
     token: str = ""
     ws_check: Any = None

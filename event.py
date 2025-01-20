@@ -1,5 +1,10 @@
+import base64
+import binascii
 from abc import ABC, abstractmethod
 from typing import Literal, Optional, Union, Awaitable
+
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import unpad
 
 from model import Config, MyProfile, Message, MkIXGetMessage, MkIXSystemMessage
 from utils import MkIXMessageMemo, CQCode, Tools
@@ -18,7 +23,7 @@ class Event(ABC):
         self._self_id = self_id
 
     @abstractmethod
-    async def __call__(self) -> Awaitable[dict]:
+    async def __call__(self) -> Awaitable[Optional[dict]]:
         raise NotImplementedError
 
 
@@ -26,10 +31,33 @@ class MessageEvent(Event):
     _post_type = "message"
     _message: MkIXGetMessage
 
+    def _decrypt(self) -> None:
+        # 未加密
+        if not self._message.payload.meta.get("encrypt", False):
+            return
+        # 加密但未设置密钥
+        if self._message.group not in self._config.encrypt:
+            raise RuntimeError
+
+        key = self._config.encrypt[self._message.group].encode("utf-8")
+        iv = binascii.unhexlify(self._message.payload.meta.get("iv", ""))
+        try:
+            data = base64.b64decode(self._message.payload.content)
+            cipher = AES.new(key, AES.MODE_CBC, iv)
+            decrypted = unpad(cipher.decrypt(data), AES.block_size)
+            self._message.payload.content = decrypted.decode('utf-8')
+            return
+        except Exception:
+            raise RuntimeError
+
 
 class PrivateMessageEvent(MessageEvent):
 
     async def __call__(self):
+        try:
+            self._decrypt()
+        except Exception:
+            return None
         return {
             "time": self._message.time,
             "self_id": self._self_id,
@@ -51,6 +79,10 @@ class PrivateMessageEvent(MessageEvent):
 class GroupMessageEvent(MessageEvent):
 
     async def __call__(self):
+        try:
+            self._decrypt()
+        except Exception:
+            return None
         return {
             "time": self._message.time,
             "self_id": self._self_id,
@@ -250,12 +282,15 @@ class MetaEvent(Event):
     _post_type = "meta_event"
     _message: None
 
+    def __init__(self, self_id: str):
+        self._self_id = self_id
+
 
 class LifeCycle(MetaEvent):
 
     async def __call__(self):
         return {
-            "time": Tools.timestamp(),
+            "time": int(Tools.timestamp()),
             "self_id": self._self_id,
             "post_type": self._post_type,
             "meta_event_type": "lifecycle",
@@ -269,7 +304,7 @@ class HeartBeat(MetaEvent):
         status = await FetchAPI.get_instance().call(Status)
         return {
             "time": int(Tools.timestamp()),
-            "self_id": self._self_id,
+            "self_id": int(self._self_id),
             "post_type": self._post_type,
             "meta_event_type": "heartbeat",
             "status": status,
@@ -294,13 +329,14 @@ async def event_mapping(message: dict,
         if model.type == "notice":
             op = model.meta["operation"]
             if op in ("friend_request_accepted"):
+                profile.friends.add(model.meta["var"]["id"])
                 return FriendAdd
             if op in ("group_admin_set", "group_admin_unset"):
                 return GroupAdmin
             return None
-        if model.type == "join":
-            return GroupRequest     # TODO: 初始化时获取一次
-        if model.type == "friend":
+        if model.type == "join" and model.state == "等待审核":
+            return GroupRequest
+        if model.type == "friend" and model.state == "等待审核":
             return FriendRequest
         return None
 
@@ -308,6 +344,8 @@ async def event_mapping(message: dict,
         if model.type == "system":
             op = model.payload.meta["operation"]
             if op in ("group_joined"):
+                if model.meta["var"]["id"] == profile.uuid:
+                    profile.groups.add(model.group)
                 return GroupIncrease
             if op in ("group_ban", "group_lift_ban"):
                 return GroupBan
