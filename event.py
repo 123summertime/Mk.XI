@@ -6,9 +6,9 @@ from typing import Literal, Optional, Union, Awaitable
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 
-from model import Config, MyProfile, Message, MkIXGetMessage, MkIXSystemMessage
-from utils import MkIXMessageMemo, CQCode, Tools
 from api import FetchAPI, Status
+from model import Config, MyProfile, Message, MkIXGetMessage, MkIXSystemMessage
+from utils import MkIXMessageMemo, CQCode, RequestMemo, Tools
 
 
 class Event(ABC):
@@ -317,9 +317,6 @@ async def event_mapping(message: dict,
                         config: Config,
                         profile: MyProfile) -> Awaitable[Optional[dict]]:
     print('Receive MkIX message', message["type"])
-    if message["time"] < launch_time:
-        return None
-
     memo = MkIXMessageMemo.get_instance()
 
     def handle_system_message(model: MkIXSystemMessage):
@@ -334,9 +331,12 @@ async def event_mapping(message: dict,
             if op in ("group_admin_set", "group_admin_unset"):
                 return GroupAdmin
             return None
+        req_memo = RequestMemo.get_instance()
         if model.type == "join" and model.state == "等待审核":
+            req_memo.put(model)
             return GroupRequest
         if model.type == "friend" and model.state == "等待审核":
+            req_memo.put(model)
             return FriendRequest
         return None
 
@@ -373,6 +373,8 @@ async def event_mapping(message: dict,
         model = MkIXSystemMessage.model_validate(message)
         event = handle_system_message(model)
     else:
+        if message["time"] < launch_time:
+            return None
         model = MkIXGetMessage.model_validate(message)
         if model.group in profile.groups:
             event = handle_group_message(model)

@@ -4,21 +4,28 @@ import json
 import base64
 import asyncio
 import mimetypes
-from datetime import datetime
+from io import BytesIO
+from math import inf
 from typing import Union, Literal, Optional, TYPE_CHECKING
-from urllib.parse import urlparse
+from datetime import datetime
 from collections import deque
-from api import PostFile, FetchAPI
+from urllib.parse import urlparse
 
 import httpx
+from PIL import Image
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 from Crypto.Util.Padding import pad
 
+from api import PostFile, FetchAPI
 from model import MkIXGetMessage, CQData, CQDataListItem, MkIXMessagePayload, MkIXPostMessage, Config, MkIXSystemMessage
 
 if TYPE_CHECKING:
     from ws import MkIXConnect
+
+TIME_LIMIT_TEXT = 1
+TIME_LIMIT_IMG = 3
+TIME_LIMIT_FILE = 10
 
 
 class MkIXMessageMemo:
@@ -84,7 +91,7 @@ class MkIXMessageMemo:
     async def post_messages(self, messages: list[MkIXPostMessage]) -> int:
         future = asyncio.Future()
         await self._message_queue.put((messages, future))
-        return await asyncio.wait_for(future, timeout=len(messages)*2)
+        return await asyncio.wait_for(future, timeout=inf)
 
     async def _dequeue(self):
         while True:
@@ -117,17 +124,18 @@ class MkIXMessageMemo:
                 except Exception as e:
                     print("Error:", e)
             else:
-                if i.group in self._config.encrypt:
+                if i.type == "image" and self._config.webp:
+                    i.payload.content = Tools.webp_b64(i.payload.content)
+                if i.type in ("text", "image") and i.group in self._config.encrypt:
                     Tools.encrypt(self._config, i)
                 asyncio.create_task(self._ws.send(i.model_dump()))
-                res = await self._wait_for_echo(i.echo)
+                res = await self._wait_for_echo(i.echo, Tools.time_limit(i.type))
 
             if res:
                 print(f"#{self._echo_id} Success")
                 message_ids.append(res)
             else:
                 print(f"#{self._echo_id} Failed")
-
             self._echo_id += 1
 
         for i in message_ids:
@@ -142,11 +150,11 @@ class MkIXMessageMemo:
         else:
             future.set_result(message_ids[0])
 
-    async def _wait_for_echo(self, echo_id: int) -> Optional[str]:
+    async def _wait_for_echo(self, echo_id: int, time_limit: int) -> Optional[str]:
         future = asyncio.Future()
         self._wait_echo[echo_id] = future
         try:
-            return await asyncio.wait_for(future, timeout=2)
+            return await asyncio.wait_for(future, timeout=time_limit)
         except Exception as e:
             print(f"#{echo_id} Timeout:", e)
             del self._wait_echo[echo_id]
@@ -383,6 +391,40 @@ class CQCode:
             raise ValueError(f"Invalid face_id: {id}, skipping...")
 
 
+class RequestMemo:
+    _instance = None
+
+    def __init__(self):
+        if RequestMemo._instance is not None:
+            raise ValueError("Already instantiated")
+        self._friend_request = dict()
+        self._group_request = dict()
+        RequestMemo._instance = self
+
+    @classmethod
+    def get_instance(cls) -> 'RequestMemo':
+        if cls._instance is None:
+            raise ValueError("Not instantiated yet")
+        return cls._instance
+
+    def put(self, msg: MkIXSystemMessage):
+        if msg.state == "等待审核" and msg.type == "join":
+            self._group_request[msg.time] = msg.target
+        if msg.state == "等待审核" and msg.type == "friend":
+            self._friend_request[msg.time] = msg.target
+
+    def get(self, id: str, type: Literal["group", "friend"]):
+        try:
+            id = str(id)
+            if type == "group":
+                return self._group_request[id]
+            if type == "friend":
+                return self._friend_request[id]
+        except KeyError:
+            raise KeyError(f"Invalid flag: {id}")
+        raise ValueError(f"Invalid type: {type}")
+
+
 class Tools:
 
     @staticmethod
@@ -401,3 +443,24 @@ class Tools:
         msg.payload.content = encrypted
         msg.payload.meta["encrypt"] = True
         msg.payload.meta["iv"] = iv.hex()
+
+    @staticmethod
+    def webp_b64(s: str) -> str:
+        try:
+            img = base64.b64decode(s.split(',')[1])
+            image = Image.open(BytesIO(img))
+            buffer = BytesIO()
+            image.save(buffer, format="WEBP")
+            webp = base64.b64encode(buffer.getvalue()).decode("utf-8")
+            return f"data:image/webp;base64,{webp}"
+        except Exception as e:
+            print(f"Convert image error: {e}")
+            return s
+
+    @staticmethod
+    def time_limit(t: str) -> int:
+        if t in ("text", "revokeRequest"):
+            return TIME_LIMIT_TEXT
+        if t == "image":
+            return TIME_LIMIT_IMG
+        return TIME_LIMIT_FILE

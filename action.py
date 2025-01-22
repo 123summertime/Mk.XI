@@ -1,11 +1,11 @@
-from model import OB11ActionData, MkIXPostMessage, CQDataListItem, CQData, MkIXMessagePayload
-from utils import CQCode
 from typing import Union, Literal
-from utils import MkIXMessageMemo
+
 from api import *
+from utils import MkIXMessageMemo, CQCode, RequestMemo
+from model import OB11ActionData, MkIXPostMessage, CQDataListItem, CQData, MkIXMessagePayload
 
 
-class WSAction:
+class MessageAction:
 
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
@@ -20,12 +20,29 @@ class WSAction:
         self._add_info(model_list)
         return model_list
 
+    def _modify_info(self, model_list: list[MkIXPostMessage]) -> None:
+        """ 反序列化前修改信息，原地修改 """
+        pass
+
     def _add_info(self, model_list: list[MkIXPostMessage]) -> None:
-        """ 增加额外的信息，原地修改 """
+        """ 反序列化后增加额外的信息，原地修改 """
         pass
 
 
-class SendPrivateMsg(WSAction):
+class HTTPAction(ABC):
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, '_' + k, v)
+
+    @abstractmethod
+    def __call__(self):
+        raise NotImplementedError
+
+# OneBot v11 API
+
+
+class SendPrivateMsg(MessageAction):
     _user_id: str
     _message: Union[str, list]
     _auto_escape = False
@@ -36,7 +53,7 @@ class SendPrivateMsg(WSAction):
             i.groupType = "friend"
 
 
-class SendGroupMsg(WSAction):
+class SendGroupMsg(MessageAction):
     _group_id: str
     _message: Union[str, list]
     _auto_escape = False
@@ -47,7 +64,7 @@ class SendGroupMsg(WSAction):
             i.groupType = "group"
 
 
-class SendMsg(WSAction):
+class SendMsg(MessageAction):
     _message_type: Optional[Literal["group", "private"]] = None
     _user_id: Optional[str] = None
     _group_id: Optional[str] = None
@@ -71,17 +88,6 @@ class SendMsg(WSAction):
         for i in model_list:
             i.groupType = group_type
             i.group = group_id
-
-
-class HTTPAction(ABC):
-
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            setattr(self, '_' + k, v)
-
-    @abstractmethod
-    def __call__(self):
-        raise NotImplementedError
 
 
 class DeleteMsg(HTTPAction):
@@ -169,22 +175,21 @@ class SetGroupLeave(HTTPAction):
 
 
 class SetFriendAddRequest(HTTPAction):
-    _user_id: str   # incompatible
     _flag: str
     _approve = True
     _remark: str
 
     def __call__(self):
+        user_id = RequestMemo.get_instance().get(self._flag, "friend")
         return {
             "cls": FriendAddRequest,
-            "user_id": self._user_id,
+            "user_id": user_id,
             "flag": self._flag,
             "approve": self._approve,
         }
 
 
 class SetGroupAddRequest(HTTPAction):
-    _group_id: str  # incompatible
     _flag: str
     _sub_type: str
     _type: str
@@ -192,9 +197,10 @@ class SetGroupAddRequest(HTTPAction):
     _reason: str
 
     def __call__(self):
+        group_id = RequestMemo.get_instance().get(self._flag, "group")
         return {
             "cls": GroupAddRequest,
-            "group_id": self._group_id,
+            "group_id": group_id,
             "flag": self._flag,
             "approve": self._approve,
         }
@@ -291,6 +297,40 @@ class GetVersionInfo(HTTPAction):
             "cls": VersionInfo,
         }
 
+# go-cqhttp API
+
+
+class SendGroupForwardMsg(MessageAction):
+
+    def __init__(self, **kwargs):
+        self._group_id = None
+        kwargs["message_type"] = "group"
+        messages = kwargs["messages"]
+        messages = messages if isinstance(messages, list) else [messages]
+        kwargs["message"] = list(map(lambda i: i["data"]["content"], messages))
+        super().__init__(**kwargs)
+
+    def _add_info(self, model_list: list[MkIXPostMessage]) -> None:
+        for i in model_list:
+            i.group = str(self._group_id)
+            i.groupType = "group"
+
+
+class SendPrivateForwardMsg(MessageAction):
+
+    def __init__(self, **kwargs):
+        self._user_id = None
+        kwargs["message_type"] = "private"
+        messages = kwargs["messages"]
+        messages = messages if isinstance(messages, list) else [messages]
+        kwargs["message"] = list(map(lambda i: i["data"]["content"], messages))
+        super().__init__(**kwargs)
+
+    def _add_info(self, model_list: list[MkIXPostMessage]) -> None:
+        for i in model_list:
+            i.group = str(self._user_id)
+            i.groupType = "friend"
+
 
 def action_mapping(data: OB11ActionData) -> Union[list[MkIXPostMessage], dict]:
     print('Receive OB11 message')
@@ -317,9 +357,12 @@ def action_mapping(data: OB11ActionData) -> Union[list[MkIXPostMessage], dict]:
         "get_image": GetImage,
         "get_status": GetStatus,
         "get_version_info": GetVersionInfo,
+
+        "send_group_forward_msg": SendGroupForwardMsg,
+        "send_private_forward_msg": SendPrivateForwardMsg,
     }
     if action not in actions:
-        raise ValueError("Unsupported Action")
+        raise ValueError(f"Unsupported Action: {action}")
 
     operation = actions[action](**data.params)()
     return operation

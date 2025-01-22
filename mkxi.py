@@ -1,12 +1,13 @@
 import yaml
+import asyncio
 import traceback
 
 from api import *
+from event import event_mapping
+from utils import MkIXMessageMemo, RequestMemo, Tools
 from ws import MkIXConnect, OneBotConnect
 from model import Config, MyProfile, OB11ActionData
-from event import event_mapping
 from action import action_mapping, FriendAddRequest, GroupAddRequest
-from utils import MkIXMessageMemo, Tools
 
 
 class MkXI:
@@ -21,7 +22,7 @@ class MkXI:
         try:
             with open('config.yaml', 'r', encoding='utf-8') as F:
                 config = yaml.safe_load(F)
-                config["encrypt"] = {str(k): v for k, v in config["encrypt"].items()}
+                config["encrypt"] = {str(k): v for k, v in config["encrypt"].items()} if config["encrypt"] else {}
                 self._config = Config.model_validate(config)
         except Exception as e:
             print("Error when loading config", e)
@@ -30,24 +31,22 @@ class MkXI:
         self._fetcher = FetchAPI(self._config).get_instance()
         res = await self._fetcher.call(Login)
         self._config.token = f"Bearer {res['access_token']}"
-        res = await self._fetcher.call(WSToken)
-        ws_token = res['token']
         res = await self._fetcher.call(GetMyProfile)
         res["groups"] = {i["group"] for i in res["groups"]}
         res["friends"] = {i["uuid"] for i in res["friends"]}
         self._my_profile = MyProfile.model_validate(res)
 
-        self._MkIXConnect = MkIXConnect(self._config, self._mkix_message_handler, ws_token)
-        self._OneBotConnect = OneBotConnect(self._config, self._onebot_message_handler)
+        self._MkIXConnect, self._OneBotConnect = await asyncio.gather(
+            MkIXConnect.create(self._config, self._mkix_message_handler),
+            OneBotConnect.create(self._config, self._onebot_message_handler),
+        )
         self._memo = MkIXMessageMemo(self._config, self._MkIXConnect).get_instance()
+        self._request_memo = RequestMemo().get_instance()
         self._launch_time = Tools.timestamp()
         self._config.ws_check = self._MkIXConnect.can_send
-
-        print("Set up success")
-
-        # asyncio.create_task(self._fetcher.call(GetFriendRequest))
-        # for i in self._my_profile.groups:
-        #     asyncio.create_task(self._fetcher.call(GetGroupRequest, group=i))
+        asyncio.create_task(self._fetcher.call(GetFriendRequest))
+        for i in self._my_profile.groups:
+            asyncio.create_task(self._fetcher.call(GetGroupRequest, group=i))
 
     async def _mkix_message_handler(self, message):
         event = await event_mapping(message, self._launch_time, self._config, self._my_profile)
@@ -90,8 +89,9 @@ class MkXI:
     async def run(self):
         try:
             await self._set_up()
+            print("Set up success")
             while True:
                 await asyncio.sleep(5)
         except Exception as e:
             traceback.print_exc()
-            print("Error during event loop", e)
+            print(f"Error: {e}")

@@ -1,13 +1,14 @@
 import re
-import json
-import base64
 import os
-import aiofiles
-import asyncio
+import json
 import uuid
-import httpx
+import base64
+import asyncio
+import aiofiles
 from abc import ABC, abstractmethod
 from typing import Type, Optional
+
+import httpx
 
 from model import Config
 
@@ -24,6 +25,8 @@ class API(ABC):
         return f"{self._config.server_url}/{endpoint}?{query}"
 
     def _response_handler(self, res: httpx.Response) -> dict:
+        if res.status_code >= 500:
+            raise RuntimeError(f"MkIX Server Error {res.status_code}")
         content = json.loads(res.content.decode())
         if res.status_code >= 300:
             raise RuntimeError(f"HTTP {res.status_code} detail={content['detail']}")
@@ -50,11 +53,9 @@ class API(ABC):
             "timeout": timeout,
         }
 
-        async with httpx.AsyncClient() as client:
-            try:
-                res = await client.request(**kwargs)
-            except Exception as e:
-                print("Fetch error:", e)
+        verify = self._config.ssl_check
+        async with httpx.AsyncClient(verify=verify) as client:
+            res = await client.request(**kwargs)
         return res
 
     @abstractmethod
@@ -290,10 +291,6 @@ class GroupList(API):
         } for i in ret["groups"]]
 
 
-class GroupMemberInfo(API):
-    ...
-
-
 class GroupMemberList(API):
 
     async def __call__(self, *args, **kwargs):
@@ -339,6 +336,16 @@ class GetGroupRequest(API):
             self._build_url(f'v1/group/{group}/verify/request', device=DEVICE),
             headers={"Authorization": self._config.token}
         ))
+
+
+class VersionInfo(API):
+
+    async def __call__(self, *args, **kwargs):
+        return {
+            "app_name": "MkXI",
+            "app_version": "1.0.0",
+            "protocol_version": "v11",
+        }
 
 
 class APIWithFileIO(API):
@@ -391,20 +398,6 @@ class Image(APIWithFileIO):
             await f.write(data)
 
         return {"file": absolute_path}
-
-
-class VersionInfo(API):
-
-    async def __call__(self, *args, **kwargs):
-        return {
-            "app_name": "MkXI",
-            "app_version": "1.0.0",
-            "protocol_version": "v11",
-        }
-
-
-class CleanCache(APIWithFileIO):
-    ...
 
 
 class FetchAPI:

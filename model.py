@@ -1,5 +1,5 @@
-from typing import Union, Optional, Any, Literal
 import hashlib
+from typing import Optional, Any, Literal
 
 from pydantic import BaseModel, validator
 
@@ -11,6 +11,7 @@ class Config(BaseModel):
     OneBot_url: str
     max_memo_size: int
     ssl_check: bool
+    webp: bool
     encrypt: dict[str, str]
 
     token: str = ""
