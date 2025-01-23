@@ -6,6 +6,7 @@ from model import OB11ActionData, MkIXPostMessage, CQDataListItem, CQData, MkIXM
 
 
 class MessageAction:
+    _auto_escape = False
 
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
@@ -16,13 +17,9 @@ class MessageAction:
             self._message = CQData(data=self._message)
 
     def __call__(self) -> list[MkIXPostMessage]:
-        model_list = CQCode.deserialization(self._message)
+        model_list = CQCode.deserialization(self._message, self._auto_escape)
         self._add_info(model_list)
         return model_list
-
-    def _modify_info(self, model_list: list[MkIXPostMessage]) -> None:
-        """ 反序列化前修改信息，原地修改 """
-        pass
 
     def _add_info(self, model_list: list[MkIXPostMessage]) -> None:
         """ 反序列化后增加额外的信息，原地修改 """
@@ -45,7 +42,6 @@ class HTTPAction(ABC):
 class SendPrivateMsg(MessageAction):
     _user_id: str
     _message: Union[str, list]
-    _auto_escape = False
 
     def _add_info(self, model_list: list[MkIXPostMessage]) -> None:
         for i in model_list:
@@ -56,7 +52,6 @@ class SendPrivateMsg(MessageAction):
 class SendGroupMsg(MessageAction):
     _group_id: str
     _message: Union[str, list]
-    _auto_escape = False
 
     def _add_info(self, model_list: list[MkIXPostMessage]) -> None:
         for i in model_list:

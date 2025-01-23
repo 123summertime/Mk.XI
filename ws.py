@@ -101,7 +101,10 @@ class OneBotConnect(WSConnect):
 
     async def _connect(self, future: asyncio.Future):
         url = self._config.OneBot_url
-        headers = {"X-Self-ID": self._config.account}
+        headers = {
+            "X-Self-ID": self._config.account,
+            "X-Client-Role": "Universal",
+        }
 
         while True:
             try:

@@ -36,10 +36,8 @@ class MkXI:
         res["friends"] = {i["uuid"] for i in res["friends"]}
         self._my_profile = MyProfile.model_validate(res)
 
-        self._MkIXConnect, self._OneBotConnect = await asyncio.gather(
-            MkIXConnect.create(self._config, self._mkix_message_handler),
-            OneBotConnect.create(self._config, self._onebot_message_handler),
-        )
+        self._MkIXConnect = await MkIXConnect.create(self._config, self._mkix_message_handler)
+        self._OneBotConnect = await OneBotConnect.create(self._config, self._onebot_message_handler)
         self._memo = MkIXMessageMemo(self._config, self._MkIXConnect).get_instance()
         self._request_memo = RequestMemo().get_instance()
         self._launch_time = Tools.timestamp()

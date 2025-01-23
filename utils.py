@@ -109,7 +109,6 @@ class MkIXMessageMemo:
         for idx, i in enumerate(messages):
             i.echo = self._echo_id
             res = None
-
             if i.type in ("file", "audio"):
                 fetcher = FetchAPI.get_instance()
                 try:
@@ -122,7 +121,7 @@ class MkIXMessageMemo:
                     )
                     res = res["time"]
                 except Exception as e:
-                    print("Error:", e)
+                    print("Upload File Error:", e)
             else:
                 if i.type == "image" and self._config.webp:
                     i.payload.content = Tools.webp_b64(i.payload.content)
@@ -145,8 +144,6 @@ class MkIXMessageMemo:
         if success_count == 0:
             future.set_result(-1)
             raise Exception("All failed")
-        elif success_count < len(messages):
-            future.set_result(message_ids[0])
         else:
             future.set_result(message_ids[0])
 
@@ -183,7 +180,7 @@ class CQCode:
                     raise ValueError("Parameters 'config' and 'group_type' must be provided for file/audio types")
                 group_type = 'group' if group_type == 'group' else 'user'
                 url = f"{config.server_url}/v1/{group_type}/{message.group}/download/{message.payload.content}"
-                convert += f"[CQ:{message.type},file={url}]"
+                convert += f"[CQ:{message.type if message.type == 'file' else 'record'},file={url}]"
             return convert
 
         if format_type == "array":
@@ -209,7 +206,7 @@ class CQCode:
                 group_type = 'group' if group_type == 'group' else 'user'
                 url = f"{config.server_url}/v1/{group_type}/{message.group}/download/{message.payload.content}"
                 convert.append({
-                    "type": message.type,
+                    "type": message.type if message.type == 'file' else 'record',
                     "data": {"file": url},
                 })
             return convert
@@ -217,9 +214,13 @@ class CQCode:
         raise ValueError("Invalid parameter: format_type")
 
     @classmethod
-    def deserialization(cls, message: Union[CQData, list[CQDataListItem]]) -> list[MkIXPostMessage]:
+    def deserialization(cls,
+                        message: Union[CQData, list[CQDataListItem]],
+                        auto_escape: bool = False) -> list[MkIXPostMessage]:
         segments = []
-        if isinstance(message, CQData):
+        if isinstance(message, CQData) and auto_escape:
+            segments.append(CQDataListItem(type="text", data={"text": message.data}))
+        elif isinstance(message, CQData):
             res = re.split(r"(\[.*?])", message.data)
             for i in res:
                 if not i:
@@ -261,7 +262,7 @@ class CQCode:
             "file": cls._file_handler,
             "face": cls._face_handler,
             "image": cls._image_handler,
-            "audio": cls._file_handler,
+            "record": cls._file_handler,
         }
 
         if model.type not in method_mapping:
@@ -270,6 +271,7 @@ class CQCode:
         type_mapping = {
             "at": "text",
             "face": "text",
+            "record": "audio",
         }
 
         convert: MkIXPostMessage = method_mapping[model.type](**(model.data))

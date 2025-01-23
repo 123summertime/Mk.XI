@@ -1,5 +1,5 @@
 import hashlib
-from typing import Optional, Any, Literal
+from typing import Optional, Any, Literal, Union
 
 from pydantic import BaseModel, validator
 
@@ -46,7 +46,7 @@ class Message(BaseModel):
 class MkIXMessagePayload(Message):
     name: Optional[str] = None
     size: Optional[int] = None
-    content: str = ""
+    content: Union[str, bytes] = ""
     meta: dict[str, Any] = {}
 
     def __or__(self, other: 'MkIXMessagePayload') -> 'MkIXMessagePayload':
