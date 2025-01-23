@@ -21,6 +21,8 @@
 > | webp          | true                              | 图片转为`webp`再发送， 注意`Mk.IX `服务器默认图片大小上限为`2048KB` |
 > | encrypt       |                                   | 需要加密的私/群聊，功能与前端的加密一致                          |
 
+运行
+> python main.py
 
 ## 兼容性
 
@@ -35,6 +37,7 @@
 | [CQ:image]  | 发送图片 | 仅接受`file`字段        |
 | [CQ:record] | 发送语音 | 仅接受`file`字段        |
 | [CQ:at]     | @某人  |                    |
+
 使用方法见`OneBot v11`[文档](https://github.com/botuniverse/onebot-11/blob/master/message/segment.md)
 
 ### API
@@ -65,7 +68,9 @@
 | /get_image              | 获取图片     |                                              |
 | /get_status             | 获取运行状态   |                                              |
 | /get_version_info       | 获取版本信息   |                                              |
+
 使用方法见`OneBot v11`[文档](https://github.com/botuniverse/onebot-11/blob/master/api/public.md)
+
 > 可以传入无效的字段但不会产生作用，响应中缺失的字段会用空字符串或-1代替
 
 #### go-cqhttp API
@@ -73,6 +78,7 @@
 |---------------------------|--------|-----------------------------------|
 | /send_group_forward_msg   | 发送群聊消息 | 仅支持自定义消息发送，非转发形式，`name`和`uin`参数无效 |
 | /send_private_forward_msg | 发送私聊消息 | 同上                                |
+
 使用方法见`go-cqhttp`[文档](https://docs.go-cqhttp.org/api)
 
 ### Event
@@ -92,4 +98,5 @@
 | 加群请求   | request    | `sub_type`固定为`add`                  |
 | 生命周期   | meta_event |                                     |
 | 心跳     | meta_event |                                     |
+
 具体信息见`OneBot v11`[文档](https://github.com/botuniverse/onebot-11/tree/master/event)
