@@ -8,6 +8,7 @@ from typing import Awaitable
 import websockets
 
 from api import WSToken, FetchAPI
+from utils import Tools
 from model import Config
 from event import LifeCycle, HeartBeat
 
@@ -41,10 +42,10 @@ class WSConnect(ABC):
         asyncio.create_task(self._message_callback(message))
 
     async def _on_close(self, e):
-        print("ws close", e)
+        Tools.logger().error(f"WS closed: {e}")
 
     async def _on_error(self, e):
-        print("ws error", e)
+        Tools.logger().error(f"WS error: {e}")
 
     async def send(self, content):
         if self._ws:
@@ -55,8 +56,8 @@ class WSConnect(ABC):
             waiter = await self._ws.ping()
             await waiter
             return True
-        except Exception as e:
-            print(e)
+        except Exception:
+            pass
         return False
 
 
@@ -80,7 +81,7 @@ class MkIXConnect(WSConnect):
                                               additional_headers=headers,
                                               ssl=ssl_context,
                                               max_size=WS_FRAME_MAX_SIZE) as websocket:
-                    print("MkIXConnect Success")
+                    Tools.logger().info("MkIXConnect Success")
                     if not future.done():
                         future.set_result(None)
                     self._ok = True
@@ -92,7 +93,7 @@ class MkIXConnect(WSConnect):
             except Exception as e:
                 await self._on_error(e)
 
-            print("MkIXConnect Error. Retrying...")
+            Tools.logger().error("MkIXConnect Error. Retrying...")
             self._ok = False
             await asyncio.sleep(RETRY_INTERVAL)
 
@@ -111,7 +112,7 @@ class OneBotConnect(WSConnect):
                 async with websockets.connect(url,
                                               additional_headers=headers,
                                               max_size=WS_FRAME_MAX_SIZE) as websocket:
-                    print("OneBotConnect Success")
+                    Tools.logger().info("OneBotConnect Success")
                     if not future.done():
                         future.set_result(None)
                     self._ok = True
@@ -125,7 +126,7 @@ class OneBotConnect(WSConnect):
             except Exception as e:
                 await self._on_error(e)
 
-            print("OneBotConnect Error. Retrying...")
+            Tools.logger().error("OneBotConnect Error. Retrying...")
             self._ok = False
             await asyncio.sleep(RETRY_INTERVAL)
 

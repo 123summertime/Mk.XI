@@ -1,7 +1,7 @@
 from typing import Union, Literal
 
 from api import *
-from utils import MkIXMessageMemo, CQCode, RequestMemo
+from utils import MkIXMessageMemo, CQCode, RequestMemo, Tools
 from model import OB11ActionData, MkIXPostMessage, CQDataListItem, CQData, MkIXMessagePayload
 
 
@@ -64,7 +64,6 @@ class SendMsg(MessageAction):
     _user_id: Optional[str] = None
     _group_id: Optional[str] = None
     _message: Union[str, list]
-    _auto_escape = False
 
     def _add_info(self, model_list: list[MkIXPostMessage]) -> None:
         group_type = ""
@@ -245,6 +244,18 @@ class GetGroupList(HTTPAction):
         }
 
 
+class GetGroupMemberInfo(HTTPAction):
+    _group_id: str
+    _user_id: str
+
+    def __call__(self):
+        return {
+            "cls": GroupMemberInfo,
+            "group_id": self._group_id,
+            "user_id": self._user_id,
+        }
+
+
 class GetGroupMemberList(HTTPAction):
     _group_id: str
 
@@ -328,7 +339,7 @@ class SendPrivateForwardMsg(MessageAction):
 
 
 def action_mapping(data: OB11ActionData) -> Union[list[MkIXPostMessage], dict]:
-    print('Receive OB11 message')
+    Tools.logger().info(f'Receive OB11 message: {data}')
     action = data.action
     actions = {
         "send_private_msg": SendPrivateMsg,
@@ -347,6 +358,7 @@ def action_mapping(data: OB11ActionData) -> Union[list[MkIXPostMessage], dict]:
         "get_friend_list": GetFriendList,
         "get_group_info": GetGroupInfo,
         "get_group_list": GetGroupList,
+        "get_group_member_info": GetGroupMemberInfo,
         "get_group_member_list": GetGroupMemberList,
         "get_record": GetRecord,
         "get_image": GetImage,

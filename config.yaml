@@ -1,4 +1,4 @@
-account: 9876543210   # 账号
+account: 3213344200   # 账号
 password: 123456      # 密码
 server_url: http://127.0.0.1:8000   # Mk.IX服务器地址
 
@@ -9,6 +9,6 @@ OneBot_url: ws://127.0.0.1:8080/onebot/v11/ws
 max_memo_size: 1024  # 记录最近的max_memo_size条收发的消息，超出范围的无法被撤回
 ssl_check: true      # 是否启用启用 SSL/TLS 证书验证，例如Mk.IX服务器使用自签名证书则设为false
 webp: true           # 图片转为webp再发送， 注意Mk.IX服务器默认图片大小上限为2048KB
-encrypt:             # 	需要加密的私/群聊，功能与前端的加密一致。
+encrypt:             # 需要加密的私/群聊，功能与前端的加密一致。
   # 例：
   1234567890: abcdefghijklmnopqrstuvwxyz012345

@@ -3,6 +3,7 @@ import os
 import json
 import base64
 import asyncio
+import logging
 import mimetypes
 from io import BytesIO
 from math import inf
@@ -13,6 +14,7 @@ from urllib.parse import urlparse
 
 import httpx
 from PIL import Image
+from rich.logging import RichHandler
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 from Crypto.Util.Padding import pad
@@ -26,6 +28,23 @@ if TYPE_CHECKING:
 TIME_LIMIT_TEXT = 1
 TIME_LIMIT_IMG = 3
 TIME_LIMIT_FILE = 10
+
+
+class RichHandlerCut(RichHandler):
+    def emit(self, record):
+        if isinstance(record.msg, str) and len(record.msg) > 500:
+            record.msg = record.msg[:500] + "..."
+        super().emit(record)
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[RichHandlerCut()]
+)
+logger = logging.getLogger("rich_logger")
+logger.setLevel(logging.INFO)
 
 
 class MkIXMessageMemo:
@@ -88,10 +107,15 @@ class MkIXMessageMemo:
 
         return group_type, str(group_id), messages
 
-    async def post_messages(self, messages: list[MkIXPostMessage]) -> int:
+    async def post_messages(self, messages: list[MkIXPostMessage], action: str) -> int:
         future = asyncio.Future()
         await self._message_queue.put((messages, future))
-        return await asyncio.wait_for(future, timeout=inf)
+        ret = await asyncio.wait_for(future, timeout=30)
+        mapping = {
+            "send_private_forward_msg": {"message_id": ret, "forward_id": ret},
+            "send_group_forward_msg": {"message_id": ret, "forward_id": ret},
+        }
+        return mapping.get(action, {"message_id": ret})
 
     async def _dequeue(self):
         while True:
@@ -99,7 +123,7 @@ class MkIXMessageMemo:
             try:
                 await self._process_messages(batch)
             except Exception as e:
-                print(f"Error processing messages: {e}")
+                Tools.logger().error(f"Error processing messages: {e}")
             finally:
                 self._message_queue.task_done()
 
@@ -121,7 +145,7 @@ class MkIXMessageMemo:
                     )
                     res = res["time"]
                 except Exception as e:
-                    print("Upload File Error:", e)
+                    Tools.logger().error(f"Upload File Error: {e}")
             else:
                 if i.type == "image" and self._config.webp:
                     i.payload.content = Tools.webp_b64(i.payload.content)
@@ -131,10 +155,10 @@ class MkIXMessageMemo:
                 res = await self._wait_for_echo(i.echo, Tools.time_limit(i.type))
 
             if res:
-                print(f"#{self._echo_id} Success")
+                Tools.logger().info(f"#{self._echo_id} Success")
                 message_ids.append(res)
             else:
-                print(f"#{self._echo_id} Failed")
+                Tools.logger().error(f"#{self._echo_id} Failed")
             self._echo_id += 1
 
         for i in message_ids:
@@ -153,7 +177,7 @@ class MkIXMessageMemo:
         try:
             return await asyncio.wait_for(future, timeout=time_limit)
         except Exception as e:
-            print(f"#{echo_id} Timeout:", e)
+            Tools.logger().error(f"#{echo_id} Timeout: {e}")
             del self._wait_echo[echo_id]
             return None
 
@@ -243,15 +267,11 @@ class CQCode:
 
         stack: list[MkIXPostMessage] = []
         for x in segments:
-            try:
-                x = cls._type_match(x)
-                if stack and stack[-1].type == "text" and x.type == "text":
-                    stack[-1] |= x
-                else:
-                    stack.append(x)
-            except Exception as e:
-                print(e)
-
+            x = cls._type_match(x)
+            if stack and stack[-1].type == "text" and x.type == "text":
+                stack[-1] |= x
+            else:
+                stack.append(x)
         return stack
 
     @classmethod
@@ -456,7 +476,7 @@ class Tools:
             webp = base64.b64encode(buffer.getvalue()).decode("utf-8")
             return f"data:image/webp;base64,{webp}"
         except Exception as e:
-            print(f"Convert image error: {e}")
+            Tools.logger().error(f"Convert image error: {e}")
             return s
 
     @staticmethod
@@ -466,3 +486,7 @@ class Tools:
         if t == "image":
             return TIME_LIMIT_IMG
         return TIME_LIMIT_FILE
+
+    @staticmethod
+    def logger():
+        return logger

@@ -1,6 +1,4 @@
 import yaml
-import asyncio
-import traceback
 
 from api import *
 from event import event_mapping
@@ -25,7 +23,7 @@ class MkXI:
                 config["encrypt"] = {str(k): v for k, v in config["encrypt"].items()} if config["encrypt"] else {}
                 self._config = Config.model_validate(config)
         except Exception as e:
-            print("Error when loading config", e)
+            Tools.logger().error(f"Error when loading config: {e}")
 
     async def _set_up(self):
         self._fetcher = FetchAPI(self._config).get_instance()
@@ -55,11 +53,11 @@ class MkXI:
         try:
             operation = action_mapping(OB11ActionData.model_validate(message))
             if isinstance(operation, list):     # 该Action通过ws发送
-                message_id = await self._memo.post_messages(operation)
+                ret = await self._memo.post_messages(operation, message["action"])
                 asyncio.create_task(self._OneBotConnect.send({
                     'status': 'ok',
                     'retcode': 0,
-                    'data': {'message_id': message_id},
+                    'data': ret,
                     'echo': message["echo"],
                 }))
             elif isinstance(operation, dict):   # 该Action通过http发送
@@ -75,8 +73,7 @@ class MkXI:
                     'echo': message["echo"],
                 }))
         except Exception as e:
-            print("Action error", e)
-            print(traceback.print_exc())
+            Tools.logger().error(f"Action error: {e}")
             asyncio.create_task(self._OneBotConnect.send({
                 'status': 'failed',
                 'retcode': 1400,
@@ -87,9 +84,8 @@ class MkXI:
     async def run(self):
         try:
             await self._set_up()
-            print("Set up success")
+            Tools.logger().info("Set up success")
             while True:
                 await asyncio.sleep(5)
         except Exception as e:
-            traceback.print_exc()
-            print(f"Error: {e}")
+            Tools.logger().error(f"Error: {e}")

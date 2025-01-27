@@ -10,16 +10,16 @@
 
 修改`config.yaml`
 
-> | 字段            | 默认                                | 功能                                            |
-> |---------------|-----------------------------------|-----------------------------------------------|
-> | account       |                                   | 账号                                            |
-> | password      |                                   | 密码                                            |
-> | server_url    | http://127.0.0.1:8000             | `Mk.IX`服务器地址                                  |
-> | OneBot_url    | ws://127.0.0.1:8080/onebot/v11/ws | `OneBot Adapter`连接地址                          |
-> | max_memo_size | 1024                              | 记录最近的`max_memo_size`条收发的消息，超出范围的无法被撤回         |
-> | ssl_check     | true                              | 是否启用启用 `SSL/TLS` 证书验证，例如使用自签名证书则设为`false`     |
-> | webp          | true                              | 图片转为`webp`再发送， 注意`Mk.IX `服务器默认图片大小上限为`2048KB` |
-> | encrypt       |                                   | 需要加密的私/群聊，功能与前端的加密一致                          |
+> | 字段            | 默认                                | 功能                                           |
+> |---------------|-----------------------------------|----------------------------------------------|
+> | account       |                                   | 账号                                           |
+> | password      |                                   | 密码                                           |
+> | server_url    | http://127.0.0.1:8000             | `Mk.IX`服务器地址                                 |
+> | OneBot_url    | ws://127.0.0.1:8080/onebot/v11/ws | `OneBot Adapter`连接地址                         |
+> | max_memo_size | 1024                              | 记录最近的`max_memo_size`条收发的消息，超出范围的无法被撤回        |
+> | ssl_check     | true                              | 是否启用启用 `SSL/TLS` 证书验证，例如使用自签名证书则设为`false`    |
+> | webp          | true                              | 图片转为`webp`再发送， 注意`Mk.IX`服务器默认图片大小上限为`2048KB` |
+> | encrypt       |                                   | 需要加密的私/群聊，功能与前端的加密一致                         |
 
 运行
 > python main.py
@@ -49,8 +49,7 @@
 | /send_private_msg       | 发送私聊消息   |                                              |
 | /send_group_msg         | 发送群聊消息   |                                              |
 | /send_msg               | 发送消息     |                                              |
-| /send_group_msg         | 发送群聊消息   |                                              |
-| /delete_msg             | 撤回消息     | 消息ID存储在内存中，无法撤回在运行前就已经产生的消息                  |
+| /delete_msg             | 撤回消息     | 无法撤回在运行前就已经产生的消息                             |
 | /set_group_kick         | 踢出群聊     | `reject_add_request`字段无效                     |
 | /set_group_ban          | 群禁言      |                                              |
 | /set_group_admin        | 群组设置管理员  |                                              |
@@ -63,7 +62,8 @@
 | /get_friend_list        | 获取好友列表   | 响应仅包含`user_id`                               |
 | /get_group_info         | 获取群信息    | `no_cache`字段无效，响应`max_member_count`固定为`2000` |
 | /get_group_list         | 获取群列表    | 响应仅包含`group_id`                              |
-| /get_group_member_list  | 获取群员信息   | 响应仅包含`group_id`，`user_id`                    |
+| /get_group_member_info  | 获取某个群员信息 | 响应仅包含`group_id`，`user_id`，`role`             |
+| /get_group_member_list  | 获取所有群员信息 | 响应仅包含`group_id`，`user_id`，`role`             |
 | /get_record             | 获取语音     | `out_format`字段无效                             |
 | /get_image              | 获取图片     |                                              |
 | /get_status             | 获取运行状态   |                                              |

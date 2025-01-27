@@ -316,7 +316,7 @@ async def event_mapping(message: dict,
                         launch_time: str,
                         config: Config,
                         profile: MyProfile) -> Awaitable[Optional[dict]]:
-    print('Receive MkIX message', message["type"])
+    Tools.logger().info(f'Receive MkIX message: {message}')
     memo = MkIXMessageMemo.get_instance()
 
     def handle_system_message(model: MkIXSystemMessage):
@@ -373,12 +373,12 @@ async def event_mapping(message: dict,
         model = MkIXSystemMessage.model_validate(message)
         event = handle_system_message(model)
     else:
-        if message["time"] < launch_time:
-            return None
         model = MkIXGetMessage.model_validate(message)
         if model.group in profile.groups:
             event = handle_group_message(model)
         else:
             event = handle_private_message(model)
+        if model.time < launch_time or model.senderID == profile.uuid:
+            return None
 
     return (await event(model, config, profile.uuid)()) if event else None

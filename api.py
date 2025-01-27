@@ -291,20 +291,77 @@ class GroupList(API):
         } for i in ret["groups"]]
 
 
+class GroupMemberInfo(API):
+
+    async def __call__(self, *args, **kwargs):
+        group_id, user_id = kwargs["group_id"], kwargs["user_id"]
+        res = await self._fetch(
+            "GET",
+            self._build_url(f'v1/group/{group_id}/members/admin'),
+            headers={"Authorization": self._config.token}
+        )
+        ret = self._response_handler(res)
+        if user_id in [i["uuid"] for i in ret["admin"]]:
+            role = "admin"
+        elif user_id == ret["owner"]["uuid"]:
+            role = "owner"
+        else:
+            role = "member"
+        return {
+            "group_id": group_id,
+            "user_id": user_id,
+            "nick_name": "",
+            "card": "",
+            "sex": "",
+            "age": -1,
+            "area": "",
+            "join_time": -1,
+            "last_sent_time": -1,
+            "level": "",
+            "role": role,
+            "unfriendly": "",
+            "title": "",
+            "title_expire_time": -1,
+            "card_changeable": False,
+        }
+
+
 class GroupMemberList(API):
 
     async def __call__(self, *args, **kwargs):
         group_id = kwargs["group_id"]
-        res = await self._fetch(
+        res0 = await self._fetch(
             "GET",
             self._build_url(f'v1/group/{group_id}/members'),
             headers={"Authorization": self._config.token}
         )
-        ret = self._response_handler(res)
+        ret0 = self._response_handler(res0)
+        res1 = await self._fetch(
+            "GET",
+            self._build_url(f'v1/group/{group_id}/members/admin'),
+            headers={"Authorization": self._config.token}
+        )
+        ret1 = self._response_handler(res1)
+        admins = {i["uuid"] for i in ret1["admin"]}
+        owner = ret1["owner"]["uuid"]
+
         return [{
             "group_id": group_id,
             "user_id": i["uuid"],
-        } for i in ret["members"]]
+            "nick_name": "",
+            "card": "",
+            "sex": "",
+            "age": -1,
+            "area": "",
+            "join_time": -1,
+            "last_sent_time": -1,
+            "level": "",
+            "role": "admin" if i["uuid"] in admins else "owner" if i["uuid"] == owner else "member",
+            "unfriendly": "",
+            "title": "",
+            "title_expire_time": -1,
+            "card_changeable": False,
+        } for i in ret0["members"]]
 
 
 class Status(API):
