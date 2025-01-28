@@ -95,7 +95,7 @@ class DeleteMsg(HTTPAction):
             model = MkIXPostMessage(
                 type="revokeRequest",
                 group=group_id,
-                groupType="private" if group_type == "friend" else "group",
+                groupType=group_type,
                 payload=MkIXMessagePayload(
                     content=i,
                 )

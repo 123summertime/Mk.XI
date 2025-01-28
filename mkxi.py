@@ -34,11 +34,11 @@ class MkXI:
         res["friends"] = {i["uuid"] for i in res["friends"]}
         self._my_profile = MyProfile.model_validate(res)
 
+        self._launch_time = Tools.timestamp()
+        self._request_memo = RequestMemo().get_instance()
+        self._memo = MkIXMessageMemo(self._config).get_instance()
         self._MkIXConnect = await MkIXConnect.create(self._config, self._mkix_message_handler)
         self._OneBotConnect = await OneBotConnect.create(self._config, self._onebot_message_handler)
-        self._memo = MkIXMessageMemo(self._config, self._MkIXConnect).get_instance()
-        self._request_memo = RequestMemo().get_instance()
-        self._launch_time = Tools.timestamp()
         self._config.ws_check = self._MkIXConnect.can_send
         asyncio.create_task(self._fetcher.call(GetFriendRequest))
         for i in self._my_profile.groups:
@@ -53,7 +53,7 @@ class MkXI:
         try:
             operation = action_mapping(OB11ActionData.model_validate(message))
             if isinstance(operation, list):     # 该Action通过ws发送
-                ret = await self._memo.post_messages(operation, message["action"])
+                ret = await self._memo.post_messages(operation, message["action"], self._MkIXConnect)
                 asyncio.create_task(self._OneBotConnect.send({
                     'status': 'ok',
                     'retcode': 0,

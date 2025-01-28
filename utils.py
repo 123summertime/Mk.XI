@@ -56,11 +56,11 @@ class MkIXMessageMemo:
             cls._instance = super(MkIXMessageMemo, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self, config: Config, ws: 'MkIXConnect'):
+    def __init__(self, config: Config):
         if not hasattr(self, "_initialized"):
             self._initialized = True
             self._config = config
-            self._ws = ws
+            self._ws = None
             self._echo_id = 0
             self._wait_echo: dict[int, asyncio.Future] = {}
             self._message_chunk: dict[str, list[str]] = dict()  # message_id -> [message_id_0, message_id_1, ...]
@@ -107,7 +107,8 @@ class MkIXMessageMemo:
 
         return group_type, str(group_id), messages
 
-    async def post_messages(self, messages: list[MkIXPostMessage], action: str) -> int:
+    async def post_messages(self, messages: list[MkIXPostMessage], action: str, ws) -> dict:
+        self._ws = ws
         future = asyncio.Future()
         await self._message_queue.put((messages, future))
         ret = await asyncio.wait_for(future, timeout=30)
