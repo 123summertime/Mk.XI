@@ -51,7 +51,7 @@ class MkXI:
 
     async def _onebot_message_handler(self, message: dict):
         try:
-            operation = action_mapping(OB11ActionData.model_validate(message))
+            operation = await action_mapping(OB11ActionData.model_validate(message))
             if isinstance(operation, list):     # 该Action通过ws发送
                 ret = await self._memo.post_messages(operation, message["action"], self._MkIXConnect)
                 asyncio.create_task(self._OneBotConnect.send({

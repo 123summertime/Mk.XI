@@ -1,4 +1,4 @@
-account: 3213344200   # 账号
+account: 1234567890   # 账号
 password: 123456      # 密码
 server_url: http://127.0.0.1:8000   # Mk.IX服务器地址
 

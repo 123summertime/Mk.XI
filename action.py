@@ -1,4 +1,5 @@
 from typing import Union, Literal
+from functools import reduce
 
 from api import *
 from utils import MkIXMessageMemo, CQCode, RequestMemo, Tools
@@ -16,8 +17,8 @@ class MessageAction:
         else:
             self._message = CQData(data=self._message)
 
-    def __call__(self) -> list[MkIXPostMessage]:
-        model_list = CQCode.deserialization(self._message, self._auto_escape)
+    async def __call__(self) -> list[MkIXPostMessage]:
+        model_list = await CQCode.deserialization(self._message, self._auto_escape)
         self._add_info(model_list)
         return model_list
 
@@ -33,7 +34,7 @@ class HTTPAction(ABC):
             setattr(self, '_' + k, v)
 
     @abstractmethod
-    def __call__(self):
+    async def __call__(self):
         raise NotImplementedError
 
 # OneBot v11 API
@@ -87,7 +88,7 @@ class SendMsg(MessageAction):
 class DeleteMsg(HTTPAction):
     _message_id: str
 
-    def __call__(self) -> list[MkIXPostMessage]:
+    async def __call__(self) -> list[MkIXPostMessage]:
         memo = MkIXMessageMemo.get_instance()
         group_type, group_id, revoke_messages = memo.get_storage(self._message_id)
         model_list = []
@@ -108,7 +109,7 @@ class SetGroupKick(HTTPAction):
     _group_id: str
     _user_id: str
 
-    def __call__(self) -> dict:
+    async def __call__(self) -> dict:
         return {
             "cls": GroupKick,
             "group_id": self._group_id,
@@ -121,7 +122,7 @@ class SetGroupBan(HTTPAction):
     _user_id: str
     _duration: int = 30 * 60
 
-    def __call__(self) -> dict:
+    async def __call__(self) -> dict:
         return {
             "cls": GroupBan,
             "group_id": self._group_id,
@@ -135,7 +136,7 @@ class SetGroupAdmin(HTTPAction):
     _user_id: str
     _enable = True
 
-    def __call__(self):
+    async def __call__(self):
         return {
             "cls": GroupAdmin,
             "group_id": self._group_id,
@@ -148,7 +149,7 @@ class SetGroupName(HTTPAction):
     _group_id: str
     _group_name: str
 
-    def __call__(self):
+    async def __call__(self):
         return {
             "cls": GroupName,
             "group_id": self._group_id,
@@ -160,7 +161,7 @@ class SetGroupLeave(HTTPAction):
     _group_id: str
     _is_dismiss = False
 
-    def __call__(self):
+    async def __call__(self):
         return {
             "cls": GroupLeave,
             "group_id": self._group_id,
@@ -173,7 +174,7 @@ class SetFriendAddRequest(HTTPAction):
     _approve = True
     _remark: str
 
-    def __call__(self):
+    async def __call__(self):
         user_id = RequestMemo.get_instance().get(self._flag, "friend")
         return {
             "cls": FriendAddRequest,
@@ -190,7 +191,7 @@ class SetGroupAddRequest(HTTPAction):
     _approve = True
     _reason: str
 
-    def __call__(self):
+    async def __call__(self):
         group_id = RequestMemo.get_instance().get(self._flag, "group")
         return {
             "cls": GroupAddRequest,
@@ -202,7 +203,7 @@ class SetGroupAddRequest(HTTPAction):
 
 class GetLoginInfo(HTTPAction):
 
-    def __call__(self):
+    async def __call__(self):
         return {
             "cls": LoginInfo,
         }
@@ -211,7 +212,7 @@ class GetLoginInfo(HTTPAction):
 class GetStrangerInfo(HTTPAction):
     _user_id: str
 
-    def __call__(self):
+    async def __call__(self):
         return {
             "cls": StrangerInfo,
             "user_id": self._user_id,
@@ -220,7 +221,7 @@ class GetStrangerInfo(HTTPAction):
 
 class GetFriendList(HTTPAction):
 
-    def __call__(self):
+    async def __call__(self):
         return {
             "cls": FriendList,
         }
@@ -229,7 +230,7 @@ class GetFriendList(HTTPAction):
 class GetGroupInfo(HTTPAction):
     _group_id: str
 
-    def __call__(self):
+    async def __call__(self):
         return {
             "cls": GroupInfo,
             "group_id": self._group_id,
@@ -238,7 +239,7 @@ class GetGroupInfo(HTTPAction):
 
 class GetGroupList(HTTPAction):
 
-    def __call__(self):
+    async def __call__(self):
         return {
             "cls": GroupList,
         }
@@ -248,7 +249,7 @@ class GetGroupMemberInfo(HTTPAction):
     _group_id: str
     _user_id: str
 
-    def __call__(self):
+    async def __call__(self):
         return {
             "cls": GroupMemberInfo,
             "group_id": self._group_id,
@@ -259,7 +260,7 @@ class GetGroupMemberInfo(HTTPAction):
 class GetGroupMemberList(HTTPAction):
     _group_id: str
 
-    def __call__(self):
+    async def __call__(self):
         return {
             "cls": GroupMemberList,
             "group_id": self._group_id,
@@ -270,7 +271,7 @@ class GetRecord(HTTPAction):
     _file: str
     _out_format: str
 
-    def __call__(self):
+    async def __call__(self):
         return {
             "cls": Record,
             "file": self._file,
@@ -281,7 +282,7 @@ class GetImage(HTTPAction):
     _file: str
     _out_format: str
 
-    def __call__(self):
+    async def __call__(self):
         return {
             "cls": Image,
             "file": self._file,
@@ -290,7 +291,7 @@ class GetImage(HTTPAction):
 
 class GetStatus(HTTPAction):
 
-    def __call__(self):
+    async def __call__(self):
         return {
             "cls": Status,
         }
@@ -298,7 +299,7 @@ class GetStatus(HTTPAction):
 
 class GetVersionInfo(HTTPAction):
 
-    def __call__(self):
+    async def __call__(self):
         return {
             "cls": VersionInfo,
         }
@@ -310,10 +311,14 @@ class SendGroupForwardMsg(MessageAction):
 
     def __init__(self, **kwargs):
         self._group_id = None
-        kwargs["message_type"] = "group"
+        kwargs["message_type"] = "private"
         messages = kwargs["messages"]
         messages = messages if isinstance(messages, list) else [messages]
-        kwargs["message"] = list(map(lambda i: i["data"]["content"], messages))
+        message = list(map(lambda i: i["data"]["content"], messages))
+        if isinstance(message[0], list):
+            message = reduce(lambda a, b: a + b, message, [])
+        kwargs["message"] = message
+        del kwargs["messages"]
         super().__init__(**kwargs)
 
     def _add_info(self, model_list: list[MkIXPostMessage]) -> None:
@@ -329,7 +334,11 @@ class SendPrivateForwardMsg(MessageAction):
         kwargs["message_type"] = "private"
         messages = kwargs["messages"]
         messages = messages if isinstance(messages, list) else [messages]
-        kwargs["message"] = list(map(lambda i: i["data"]["content"], messages))
+        message = list(map(lambda i: i["data"]["content"], messages))
+        if isinstance(message[0], list):
+            message = reduce(lambda a, b: a + b, message, [])
+        kwargs["message"] = message
+        del kwargs["messages"]
         super().__init__(**kwargs)
 
     def _add_info(self, model_list: list[MkIXPostMessage]) -> None:
@@ -338,7 +347,7 @@ class SendPrivateForwardMsg(MessageAction):
             i.groupType = "friend"
 
 
-def action_mapping(data: OB11ActionData) -> Union[list[MkIXPostMessage], dict]:
+async def action_mapping(data: OB11ActionData) -> Union[list[MkIXPostMessage], dict]:
     Tools.logger().info(f'Receive OB11 message: {data}')
     action = data.action
     actions = {
@@ -371,6 +380,6 @@ def action_mapping(data: OB11ActionData) -> Union[list[MkIXPostMessage], dict]:
     if action not in actions:
         raise ValueError(f"Unsupported Action: {action}")
 
-    operation = actions[action](**data.params)()
-    return operation
+    operation = actions[action](**data.params)
+    return await operation()
 

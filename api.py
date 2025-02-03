@@ -6,7 +6,7 @@ import base64
 import asyncio
 import aiofiles
 from abc import ABC, abstractmethod
-from typing import Type, Optional
+from typing import Type, Optional, Union
 
 import httpx
 
@@ -405,6 +405,18 @@ class VersionInfo(API):
         }
 
 
+class GetFile(API):
+
+    async def __call__(self, *args, **kwargs):
+        url = kwargs["url"]
+        res = await self._fetch(
+            "GET",
+            url,
+            headers={"Authorization": self._config.token} if url.startswith(self._config.server_url) else None
+        )
+        return res
+
+
 class APIWithFileIO(API):
     _save_path = './downloads'
 
@@ -472,5 +484,5 @@ class FetchAPI:
             raise ValueError("Not instantiated yet")
         return cls._instance
 
-    async def call(self, cls: Type[API], **kwargs) -> Optional[dict]:
+    async def call(self, cls: Type[API], **kwargs) -> Optional[Union[dict, httpx.Response]]:
         return await cls(self._config)(**kwargs)

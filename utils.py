@@ -6,20 +6,18 @@ import asyncio
 import logging
 import mimetypes
 from io import BytesIO
-from math import inf
 from typing import Union, Literal, Optional, TYPE_CHECKING
 from datetime import datetime
 from collections import deque
 from urllib.parse import urlparse
 
-import httpx
 from PIL import Image
 from rich.logging import RichHandler
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 from Crypto.Util.Padding import pad
 
-from api import PostFile, FetchAPI
+from api import PostFile, GetFile, FetchAPI
 from model import MkIXGetMessage, CQData, CQDataListItem, MkIXMessagePayload, MkIXPostMessage, Config, MkIXSystemMessage
 
 if TYPE_CHECKING:
@@ -60,7 +58,7 @@ class MkIXMessageMemo:
         if not hasattr(self, "_initialized"):
             self._initialized = True
             self._config = config
-            self._ws = None
+            self._ws: Optional[MkIXConnect] = None
             self._echo_id = 0
             self._wait_echo: dict[int, asyncio.Future] = {}
             self._message_chunk: dict[str, list[str]] = dict()  # message_id -> [message_id_0, message_id_1, ...]
@@ -168,7 +166,7 @@ class MkIXMessageMemo:
         success_count = len(message_ids)
         if success_count == 0:
             future.set_result(-1)
-            raise Exception("All failed")
+            raise Exception("Failed")
         else:
             future.set_result(message_ids[0])
 
@@ -239,9 +237,9 @@ class CQCode:
         raise ValueError("Invalid parameter: format_type")
 
     @classmethod
-    def deserialization(cls,
-                        message: Union[CQData, list[CQDataListItem]],
-                        auto_escape: bool = False) -> list[MkIXPostMessage]:
+    async def deserialization(cls,
+                              message: Union[CQData, list[CQDataListItem]],
+                              auto_escape: bool = False) -> list[MkIXPostMessage]:
         segments = []
         if isinstance(message, CQData) and auto_escape:
             segments.append(CQDataListItem(type="text", data={"text": message.data}))
@@ -268,7 +266,7 @@ class CQCode:
 
         stack: list[MkIXPostMessage] = []
         for x in segments:
-            x = cls._type_match(x)
+            x = await cls._type_match(x)
             if stack and stack[-1].type == "text" and x.type == "text":
                 stack[-1] |= x
             else:
@@ -276,7 +274,7 @@ class CQCode:
         return stack
 
     @classmethod
-    def _type_match(cls, model: CQDataListItem) -> MkIXPostMessage:
+    async def _type_match(cls, model: CQDataListItem) -> MkIXPostMessage:
         method_mapping = {
             "at": cls._at_handler,
             "text": cls._text_handler,
@@ -295,12 +293,12 @@ class CQCode:
             "record": "audio",
         }
 
-        convert: MkIXPostMessage = method_mapping[model.type](**(model.data))
+        convert: MkIXPostMessage = await method_mapping[model.type](**(model.data))
         convert.type = type_mapping.get(model.type, model.type)
         return convert
 
     @classmethod
-    def _at_handler(cls, qq: int) -> MkIXPostMessage:
+    async def _at_handler(cls, qq: int) -> MkIXPostMessage:
         return MkIXPostMessage(
             payload=MkIXMessagePayload(
                 meta={"at": [str(qq)]}
@@ -308,7 +306,7 @@ class CQCode:
         )
 
     @classmethod
-    def _text_handler(cls, text: str) -> MkIXPostMessage:
+    async def _text_handler(cls, text: str) -> MkIXPostMessage:
         return MkIXPostMessage(
             payload=MkIXMessagePayload(
                 content=text
@@ -316,11 +314,11 @@ class CQCode:
         )
 
     @classmethod
-    def _extract_file(cls,
-                      file: str,
-                      *,
-                      b64_output: bool = False,
-                      **kwargs) -> MkIXPostMessage:
+    async def _extract_file(cls,
+                            file: str,
+                            *,
+                            b64_output: bool = False,
+                            **kwargs) -> MkIXPostMessage:
         model = MkIXPostMessage(
             payload=MkIXMessagePayload()
         )
@@ -352,7 +350,7 @@ class CQCode:
                 raise FileNotFoundError(f"File not found: {file_path}")
 
         if parsed.scheme in ('http', 'https'):
-            res = httpx.get(file)
+            res = await FetchAPI.get_instance().call(GetFile, url=file)
             res.raise_for_status()
             content = res.content
             model.payload.content = (
@@ -363,15 +361,15 @@ class CQCode:
         raise ValueError("Invalid URI / URL / Base64, skipping...")
 
     @classmethod
-    def _image_handler(cls, file: str, **kwargs) -> MkIXPostMessage:
-        return cls._extract_file(file, b64_output=True)
+    async def _image_handler(cls, file: str, **kwargs) -> MkIXPostMessage:
+        return await cls._extract_file(file, b64_output=True)
 
     @classmethod
-    def _file_handler(cls, file: str, **kwargs) -> MkIXPostMessage:
-        return cls._extract_file(file, b64_output=False)
+    async def _file_handler(cls, file: str, **kwargs) -> MkIXPostMessage:
+        return await cls._extract_file(file, b64_output=False)
 
     @classmethod
-    def _face_handler(cls, id: int) -> MkIXPostMessage:
+    async def _face_handler(cls, id: int) -> MkIXPostMessage:
         # 10个一行
         mapping = [
             ('😲', '😖', '🥰', '🥲', '😎', '😭', '😊', '🤐', '😪', '😢'),

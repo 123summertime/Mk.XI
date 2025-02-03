@@ -6,7 +6,7 @@ from typing import Literal, Optional, Union, Awaitable
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 
-from api import FetchAPI, Status
+from api import FetchAPI, Status, GetMyProfile
 from model import Config, MyProfile, Message, MkIXGetMessage, MkIXSystemMessage
 from utils import MkIXMessageMemo, CQCode, RequestMemo, Tools
 
@@ -344,7 +344,7 @@ async def event_mapping(message: dict,
         if model.type == "system":
             op = model.payload.meta["operation"]
             if op in ("group_joined"):
-                if model.meta["var"]["id"] == profile.uuid:
+                if model.payload.meta["var"]["id"] == profile.uuid:
                     profile.groups.add(model.group)
                 return GroupIncrease
             if op in ("group_ban", "group_lift_ban"):
@@ -374,10 +374,17 @@ async def event_mapping(message: dict,
         event = handle_system_message(model)
     else:
         model = MkIXGetMessage.model_validate(message)
+        if model.group not in (profile.groups | profile.friends):
+            # 加入过新群/新好友，刷新profile
+            res = await FetchAPI.get_instance().call(GetMyProfile)
+            profile.groups = {i["group"] for i in res["groups"]}
+            profile.friends = {i["uuid"] for i in res["friends"]}
         if model.group in profile.groups:
             event = handle_group_message(model)
-        else:
+        elif model.group in profile.friends:
             event = handle_private_message(model)
+        else:
+            return None
         if model.time < launch_time or model.senderID == profile.uuid:
             return None
 
